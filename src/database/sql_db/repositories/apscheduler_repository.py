@@ -34,9 +34,9 @@ def recover_stale_runs():
                 ).first())
             if recovered_task_run:
                 if recovered_task_run.status in {'requested', 'submitted', 'running'}:
-                    from . import dao_task_center
+                    from . import task_center_repository
 
-                    dao_task_center.finish_run(
+                    task_center_repository.finish_run(
                         recovered_task_run.run_id, 'unknown',
                         'scheduler recovery could not confirm process termination',
                     )

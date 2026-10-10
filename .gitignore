@@ -174,4 +174,5 @@ apscheduler.db*
 *.sqlite3-*
 cache/
 user_data/
+src/config/anita_go.ini
 src/config/dashgo.ini

@@ -4,7 +4,7 @@ from dash.exceptions import PreventUpdate
 from common.agent import AgentError, ModelSettings, model_status, run_turn
 from common.agent_actions import can_propose, decide_task
 from common.utilities.util_menu_access import get_menu_access
-from database.sql_db.dao import dao_agent
+from database.sql_db.repositories import agent_repository
 from server import app
 
 
@@ -20,10 +20,10 @@ def initialize_conversations(_intervals, new_clicks):
     if not access.has_access('工作台-页面'):
         raise PreventUpdate
     try:
-        conversations = dao_agent.list_conversations(access.user_name)
+        conversations = agent_repository.list_conversations(access.user_name)
         if not conversations or (ctx.triggered_id == 'agent-new-conversation' and new_clicks):
-            selected = dao_agent.create_conversation(access.user_name)
-            conversations = dao_agent.list_conversations(access.user_name)
+            selected = agent_repository.create_conversation(access.user_name)
+            conversations = agent_repository.list_conversations(access.user_name)
         else:
             selected = conversations[0]['conversation_id']
         return [{'label': row['title'], 'value': row['conversation_id']} for row in conversations], selected
@@ -66,25 +66,25 @@ def handle_conversation(selected, clicks, active, prompt, consent):
     turn_id = None
     try:
         if ctx.triggered_id != 'agent-send':
-            messages = dao_agent.read_messages(access.user_name, selected)
+            messages = agent_repository.read_messages(access.user_name, selected)
             return render_messages(messages, access.user_info), selected, '当前会话', '', ''
         if not clicks:
             raise PreventUpdate
         if active != selected:
             raise AgentError('会话正在切换，请稍后再发送。')
         ModelSettings.from_environment()
-        turn_id, history = dao_agent.begin_turn(access.user_name, selected, prompt)
+        turn_id, history = agent_repository.begin_turn(access.user_name, selected, prompt)
         result = run_turn(prompt, access, history, allow_log_export=consent is True,
                           access_provider=get_menu_access)
         current_access = get_menu_access()
         if not current_access.has_access('工作台-页面') or current_access.user_name != access.user_name:
             raise AgentError('访问权限已变更，请重新登录。')
-        dao_agent.finish_turn(access.user_name, selected, turn_id, result['answer'],
+        agent_repository.finish_turn(access.user_name, selected, turn_id, result['answer'],
                               result['trace'], result['model'], proposals=result.get('proposals', ()))
-        messages = dao_agent.read_messages(access.user_name, selected)
+        messages = agent_repository.read_messages(access.user_name, selected)
         from dash import set_props
 
-        conversations = dao_agent.list_conversations(access.user_name)
+        conversations = agent_repository.list_conversations(access.user_name)
         set_props('agent-conversation-select', {'options': [
             {'label': row['title'], 'value': row['conversation_id']} for row in conversations]})
         set_props('agent-model-status', {'children': result['model'], 'className': 'agent-model-ready'})
@@ -96,10 +96,10 @@ def handle_conversation(selected, clicks, active, prompt, consent):
         message = '请求未完成，请检查服务连接后重试。'
     if turn_id:
         try:
-            dao_agent.finish_turn(access.user_name, selected, turn_id, message, failed=True)
+            agent_repository.finish_turn(access.user_name, selected, turn_id, message, failed=True)
             current_access = get_menu_access()
             if current_access.has_access('工作台-页面') and current_access.user_name == access.user_name:
-                messages = dao_agent.read_messages(access.user_name, selected)
+                messages = agent_repository.read_messages(access.user_name, selected)
                 return render_messages(messages, current_access.user_info), selected, '当前会话', no_update, message
         except Exception:
             pass
@@ -128,7 +128,7 @@ def refresh_approvals(conversation_id, _messages):
     if not access.has_access('工作台-页面') or not conversation_id:
         return []
     try:
-        return render_actions(dao_agent.read_actions(access.user_name, conversation_id), can_propose(access))
+        return render_actions(agent_repository.read_actions(access.user_name, conversation_id), can_propose(access))
     except Exception:
         return '审批记录不可用，请刷新会话。'
 
@@ -168,7 +168,7 @@ def handle_action(clicks, consents, consent_ids, active, selected):
         current_access = get_menu_access()
         if current_access.user_name != access.user_name or not current_access.has_access('工作台-页面'):
             raise AgentError('访问权限已变更，请重新登录。')
-        return render_actions(dao_agent.read_actions(access.user_name, active), can_propose(current_access)), result['message']
+        return render_actions(agent_repository.read_actions(access.user_name, active), can_propose(current_access)), result['message']
     except AgentError as error:
         return no_update, str(error)
     except Exception:

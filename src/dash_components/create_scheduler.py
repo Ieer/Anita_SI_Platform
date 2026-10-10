@@ -67,7 +67,7 @@ def fetch_tasks_from_db(
 
     # 延遲導入，避免在無資料庫環境下導致匯入失敗
     try:
-        from database.sql_db.dao.dao_apscheduler import (
+        from database.sql_db.repositories.apscheduler_repository import (
             select_extract_values_between,
             select_latest_results,
         )

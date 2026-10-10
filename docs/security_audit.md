@@ -13,7 +13,7 @@
 
 ## 发布与本地配置
 
-实际配置路径为 `src/config/dashgo.ini`，包含数据加密、Cookie 和 JWT 密钥。该文件已作为本机配置加入 Git 忽略；仓库只应发布 `src/config/dashgo.ini.example` 占位模板。部署人员须各自生成独立密钥，不得把真实配置、数据库、备份、用户头像或运行缓存加入版本库。
+实际配置路径为 `src/config/anita_go.ini`，包含数据加密、Cookie 和 JWT 密钥。旧 `src/config/dashgo.ini` 会在新文件不存在时兼容读取。两种实际配置文件均加入 Git 忽略；仓库只应发布 `src/config/anita_go.ini.example` 占位模板。部署人员须各自生成独立密钥，不得把真实配置、数据库、备份、用户头像或运行缓存加入版本库。
 
 数据库初始化会创建 `admin` / `admin123` 默认账号。首次启动后必须立刻更改，公网部署前应关闭或替换已知默认凭据。RPC 共享密钥不等同于加密密钥，也不应写入 INI 示例、源代码或提交记录。
 

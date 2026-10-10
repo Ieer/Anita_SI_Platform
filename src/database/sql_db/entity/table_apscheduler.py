@@ -1,5 +1,5 @@
 from peewee import Model, CharField, TextField, ForeignKeyField, IntegerField
-from config.dashgo_conf import SqlDbConf
+from config.anita_go_conf import SqlDbConf
 from ..conn import db
 
 if SqlDbConf.RDB_TYPE == 'mysql':

@@ -1,7 +1,7 @@
 from common.utilities.util_menu_access import MenuAccess
 from common.utilities.util_logger import Log
 from dash_components import Card, Table
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from dash_callback.application.access_ import group_auth_c  # noqa
 from i18n import t__access, t__default
 
@@ -40,7 +40,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
                         'value': i['user_roles'],
                     },
                 }
-                for i in dao_user.get_dict_group_name_users_roles(menu_access.user_name)
+                for i in user_repository.get_dict_group_name_users_roles(menu_access.user_name)
             ],
             pageSize=10,
         ),

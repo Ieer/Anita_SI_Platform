@@ -1,4 +1,4 @@
-from config.dashgo_conf import JwtConf
+from config.anita_go_conf import JwtConf
 from typing import Dict, Union, Optional
 from datetime import timedelta, datetime, timezone
 import jwt

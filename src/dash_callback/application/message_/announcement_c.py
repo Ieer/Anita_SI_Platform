@@ -11,7 +11,7 @@ from i18n import t__notification
 
 
 def get_table_data():
-    from database.sql_db.dao import dao_announcement
+    from database.sql_db.repositories import announcement_repository
 
     return [
         {
@@ -25,7 +25,7 @@ def get_table_data():
                 'custom': announcement.announcement,
             },
         }
-        for announcement in dao_announcement.get_all_announcements()
+        for announcement in announcement_repository.get_all_announcements()
     ]
 
 
@@ -73,9 +73,9 @@ def handle_delete(confirmCounts, selectedRows):
         return dash.no_update
 
     # 删除选中行
-    from database.sql_db.dao import dao_announcement
+    from database.sql_db.repositories import announcement_repository
 
-    dao_announcement.delete_announcement([row['content'] for row in selectedRows])
+    announcement_repository.delete_announcement([row['content'] for row in selectedRows])
     MessageManager.success(content=t__notification('选中行删除成功'))
 
     # 重置选中行
@@ -131,10 +131,10 @@ def handle_add_data(okCounts, value):
         from common.utilities.util_menu_access import get_menu_access
 
         op_user_name = get_menu_access(only_get_user_name=True)
-        from database.sql_db.dao import dao_announcement
+        from database.sql_db.repositories import announcement_repository
 
         MessageManager.success(content=t__notification('数据新增成功'))
-        dao_announcement.add_announcement(user_name=op_user_name, announcement=value)
+        announcement_repository.add_announcement(user_name=op_user_name, announcement=value)
         return get_table_data()
 
     MessageManager.success(content=t__notification('数据填写不完整'))
@@ -152,11 +152,11 @@ def handle_add_data(okCounts, value):
 )
 def handle_enable_eow(recentlySwitchDataIndex, recentlySwitchStatus, recentlySwitchRow):
     """处理启用、关闭逻辑"""
-    from database.sql_db.dao import dao_announcement
+    from database.sql_db.repositories import announcement_repository
 
     status = recentlySwitchRow['enable']['checked']
     content = recentlySwitchRow['enable']['custom']
-    dao_announcement.update_announcement_status(content, status)
+    announcement_repository.update_announcement_status(content, status)
     if status:
         MessageManager.success(content=t__notification('公告打开成功'))
     else:

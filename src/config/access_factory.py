@@ -126,8 +126,8 @@ class AccessFactory:
             raise ValueError(f'附加权限中存在未定义的权限：{outliers}')
 
         # 数据库检查
-        from database.sql_db.dao import dao_user
+        from database.sql_db.repositories import user_repository
 
-        outliers = set(dao_user.get_all_access_meta_for_setup_check()) - set(cls.get_dict_access_meta2menu_item().keys())
+        outliers = set(user_repository.get_all_access_meta_for_setup_check()) - set(cls.get_dict_access_meta2menu_item().keys())
         if outliers:
             logger.warning(f'数据库中存在已停用页面的权限，将忽略且不授予访问：{outliers}')

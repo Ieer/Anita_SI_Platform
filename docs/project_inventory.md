@@ -11,7 +11,7 @@ flowchart LR
     B --> D[Dash 页面与回调]
     B --> E[Flask API / OAuth2 / SSE]
     D --> F[权限与应用注册]
-    D --> G[业务服务与 DAO]
+    D --> G[业务服务与 Repository]
     G --> H[(SQLite 或 MySQL)]
     C --> H
     B -->|认证 RPC| C
@@ -33,12 +33,12 @@ Web 与 scheduler 分开运行；Web 只有在配置相同的 RPC 共享密钥�
 | `src/app_apscheduler.py` | 独立 APScheduler 服务和受控执行入口 |
 | `src/config/applications.json` | 自定义应用模块注册清单 |
 | `src/config/access_factory.py` | 内置页面加载、菜单与权限元数据 |
-| `src/config/dashgo.ini.example` | 本地运行配置模板；实际 `dashgo.ini` 不应提交 |
+| `src/config/anita_go.ini.example` | 本地运行配置模板；实际 `anita_go.ini` 不应提交；旧 `dashgo.ini` 可兼容读取 |
 | `src/dash_view/` | 登录页、主框架和各应用页面布局 |
 | `src/dash_callback/` | Dash 交互回调；敏感动作必须服务端复核权限 |
 | `src/common/task_center.py` | 统一任务权限、生命周期、运行护栏与日志服务 |
 | `src/common/agent.py`、`agent_actions.py` | 可选 OpenAI 兼容 Agent 与已有任务审批边界 |
-| `src/database/sql_db/` | Peewee 数据库连接、实体和 DAO |
+| `src/database/sql_db/` | Peewee 数据库连接、实体和 Repository (`repositories/`) |
 | `src/assets/` | CSS、JavaScript、图片及带许可证的前端资源 |
 | `tests/` | 单元、集成以及显式启用的浏览器/系统探测 |
 | `docs/`、`screenshots/` | 当前操作指南和隔离演示页面截图 |
@@ -53,7 +53,7 @@ Web 与 scheduler 分开运行；Web 只有在配置相同的 RPC 共享密钥�
 
 ## 数据与本地状态
 
-- 默认 SQLite 文件按 `src/config/dashgo.ini` 中的相对路径解析；示例指向项目根目录的 `app.db`。MySQL 参数也在本地 INI 中，MySQL 部署和任务中心迁移需要单独验证。
+- 默认 SQLite 文件按 `src/config/anita_go.ini`（或兼容读取的 `src/config/dashgo.ini`）中的相对路径解析；示例指向项目根目录的 `app.db`。MySQL 参数也在本地 INI 中，MySQL 部署和任务中心迁移需要单独验证。
 - 用户头像运行时写入 `user_data/avatars/`；备份、会话数据和本地缓存不应公开提交。
 - `cache/` 用于扫描报告、浏览器截图、临时工具和其他生成物；不是应用源代码。
 - APScheduler 持久 Job Store 与任务中心映射共同影响执行状态。备份和恢复必须同时考虑数据库、Job Store、本地配置和凭据。

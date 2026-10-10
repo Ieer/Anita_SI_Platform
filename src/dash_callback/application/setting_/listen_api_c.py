@@ -2,7 +2,7 @@ from dash.dependencies import Input, Output, State, MATCH
 from server import app
 import feffery_antd_components as fac
 from dash_components import MessageManager
-from database.sql_db.dao import dao_listen
+from database.sql_db.repositories import listen_repository
 import dash
 from uuid import uuid4
 from dash import dcc
@@ -20,10 +20,10 @@ def api_name_value2label(api_name: str):
 
 def get_tabs_items():
     items = []
-    listen_apis = dao_listen.get_listen_api_by_name(api_name=None)
+    listen_apis = listen_repository.get_listen_api_by_name(api_name=None)
     for listen_api in listen_apis:
         api_type = listen_api.api_type
-        if api_type not in dao_listen.support_api_types:
+        if api_type not in listen_repository.support_api_types:
             raise Exception(f'不支持{api_type}类型的消息监听')
         api_name = listen_api.api_name
         api_name_label = api_name_value2label(api_name)
@@ -97,7 +97,7 @@ def get_tabs_items():
 def get_listen_api():
     api_names = []
     api_names_enabled = []
-    listen_apis = dao_listen.get_listen_api_by_name(api_name=None)
+    listen_apis = listen_repository.get_listen_api_by_name(api_name=None)
     for listen_api in listen_apis:
         api_name = listen_api.api_name
         enable = listen_api.enable
@@ -128,11 +128,11 @@ def add_server_pop3_listen_api(nClick, api_name_label):
     if not api_name_label:
         MessageManager.error(content=t__setting('请输入API名称'))
         return dash.no_update
-    for i in dao_listen.get_listen_api_by_name(api_name=None): # type: ignore
+    for i in listen_repository.get_listen_api_by_name(api_name=None): # type: ignore
         if api_name_value2label(i.api_name) == api_name_label:
             MessageManager.error(content=api_name_label + t__setting('已存在'))
             return dash.no_update
-    dao_listen.insert_listen_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件POP3协议', enable=False, params_json='{}')
+    listen_repository.insert_listen_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件POP3协议', enable=False, params_json='{}')
     MessageManager.success(content=api_name_label + t__setting('创建成功'))
     return [get_tabs_items(), *get_listen_api()]
 
@@ -150,9 +150,9 @@ def enable_listen_api(enables, options):
     for option in options:
         api_name = option['value']
         if api_name in enables:
-            dao_listen.modify_enable(api_name=api_name, enable=True)
+            listen_repository.modify_enable(api_name=api_name, enable=True)
         else:
-            dao_listen.modify_enable(api_name=api_name, enable=False)
+            listen_repository.modify_enable(api_name=api_name, enable=False)
     return [get_tabs_items(), *get_listen_api()]
 
 
@@ -177,9 +177,9 @@ def save_email_pop3_api(nClick, pop3_server, port, email_account, password, api_
         password=password,
     )
     api_name_label = api_name_value2label(api_name)
-    is_enabled = dao_listen.get_listen_api_by_name(api_name=api_name).enable
-    dao_listen.delete_listen_api_by_name(api_name=api_name)
-    if dao_listen.insert_listen_api(api_name=api_name, api_type='邮件POP3协议', enable=is_enabled, params_json=json.dumps(values)):
+    is_enabled = listen_repository.get_listen_api_by_name(api_name=api_name).enable
+    listen_repository.delete_listen_api_by_name(api_name=api_name)
+    if listen_repository.insert_listen_api(api_name=api_name, api_type='邮件POP3协议', enable=is_enabled, params_json=json.dumps(values)):
         MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('配置保存失败'))

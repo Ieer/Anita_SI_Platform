@@ -1,4 +1,4 @@
-from config.dashgo_conf import PathProj, SqlDbConf
+from config.anita_go_conf import PathProj, SqlDbConf
 from playhouse.pool import PooledMySQLDatabase
 from peewee import SqliteDatabase
 from playhouse.shortcuts import ReconnectMixin

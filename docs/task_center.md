@@ -27,7 +27,7 @@ APScheduler 的持久 Job Store 和 Windows Task Scheduler 各自是任务定义
 
 Web 和 APScheduler 应作为独立进程运行。不要在 Dash 导入、开发热重载或多个 Web worker 中创建 scheduler；APScheduler 3.x 不支持多个实例共享同一个持久 Job Store。
 
-首次初始化前，请复制 [INI 模板](../src/config/dashgo.ini.example) 为 `src/config/dashgo.ini`，填写独立随机的加密密钥、Cookie 密钥和 JWT 密钥。初始化数据库会创建默认账号 `admin`，初始密码 `admin123`；首次登录后立即修改。该默认密码和旧 SHA-256 密码存储不适用于公网生产环境。
+首次初始化前，请复制 [INI 模板](../src/config/anita_go.ini.example) 为 `src/config/anita_go.ini`，填写独立随机的加密密钥、Cookie 密钥和 JWT 密钥。旧 `dashgo.ini` 会在新文件不存在时兼容读取。初始化数据库会创建默认账号 `admin`，初始密码 `admin123`；首次登录后立即修改。该默认密码和旧 SHA-256 密码存储不适用于公网生产环境。
 
 `scripts/start_ap.py` 显式控制调度启动策略：
 

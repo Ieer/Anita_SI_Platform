@@ -42,7 +42,7 @@ def apply_migration(database, jobs, backup_dir, actor, confirmed=False, legacy_t
     from peewee import SqliteDatabase
     from common import task_center
     from common.utilities import util_apscheduler
-    from database.sql_db.dao import dao_task_center
+    from database.sql_db.repositories import task_center_repository
 
     if not confirmed:
         raise ValueError('Maintenance confirmation is required.')
@@ -85,21 +85,21 @@ def apply_migration(database, jobs, backup_dir, actor, confirmed=False, legacy_t
                     if converted:
                         model.update(**converted).where(primary_key == record[0]).execute()
             TaskSchemaVersion.update(version=2).where(TaskSchemaVersion.component == 'task_center').execute()
-    dao_task_center.ensure_schema()
+    task_center_repository.ensure_schema()
     try:
         for candidate in report['platform_tasks_to_pause']:
             reference = candidate['job_id']
             util_apscheduler.start_stop_job(reference, False, candidate['trigger'])
             report['paused'].append(reference)
-            if dao_task_center.find_task('platform', reference) is None:
+            if task_center_repository.find_task('platform', reference) is None:
                 job = next(row for row in jobs if row['id'] == reference)
-                dao_task_center.create_task(uuid4().hex, 'platform', reference, '',
+                task_center_repository.create_task(uuid4().hex, 'platform', reference, '',
                     digest=task_center._digest(task_center._payload(job)), enabled=False,
                     claimed=False, actor=actor)
             report['status'] = 'pausing'
             manifest.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         report['status'] = 'paused_pending_claim'
-        dao_task_center.audit(actor, 'migration', 'schema', 'task_center', result='paused_pending_claim')
+        task_center_repository.audit(actor, 'migration', 'schema', 'task_center', result='paused_pending_claim')
     except Exception:
         report['status'] = 'interrupted_no_automatic_restore'
         raise

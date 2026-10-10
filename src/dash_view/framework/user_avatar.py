@@ -1,7 +1,7 @@
 import unicodedata
 
 import feffery_antd_components as fac
-from config.dashgo_conf import PathProj
+from config.anita_go_conf import PathProj
 
 
 def get_avatar_initials(user_info):

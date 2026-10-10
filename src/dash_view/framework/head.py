@@ -8,7 +8,7 @@ from dash.dependencies import Input, Output, State
 import dash
 from dash import set_props
 from dash.exceptions import PreventUpdate
-from database.sql_db.dao import dao_announcement
+from database.sql_db.repositories import announcement_repository
 from i18n import t__access, t__other, t__default
 
 
@@ -88,7 +88,7 @@ def render_head_content(menu_access: MenuAccess):
                     *(
                         [
                             fac.AntdAlert(
-                                message=dao_announcement.get_announcement(),
+                                message=announcement_repository.get_announcement(),
                                 type='info',
                                 banner=True,
                                 showIcon=True,
@@ -102,7 +102,7 @@ def render_head_content(menu_access: MenuAccess):
                                 },
                             )
                         ]
-                        if dao_announcement.get_announcement()
+                        if announcement_repository.get_announcement()
                         else []
                     ),
                 ],

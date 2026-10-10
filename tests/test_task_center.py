@@ -13,7 +13,7 @@ class TaskCenterTests(unittest.TestCase):
     def setUp(self):
         from peewee import SqliteDatabase
 
-        from database.sql_db.dao import dao_task_center
+        from database.sql_db.repositories import task_center_repository
         from database.sql_db.entity.table_task_center import MODELS
         from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning
         from database.sql_db.entity.table_user import SysGroup, SysGroupUser, SysRole, SysUser, SysUserRole
@@ -25,9 +25,9 @@ class TaskCenterTests(unittest.TestCase):
         self.binding = self.database.bind_ctx(self.models)
         self.binding.__enter__()
         self.database.create_tables(self.models)
-        self.patcher = patch.object(dao_task_center, 'db', return_value=self.database)
+        self.patcher = patch.object(task_center_repository, 'db', return_value=self.database)
         self.patcher.start()
-        self.dao = dao_task_center
+        self.repository = task_center_repository
         SysGroup.create(group_name='team-a', group_status=True, update_datetime=__import__('datetime').datetime.now(),
                         update_by='admin', create_datetime=__import__('datetime').datetime.now(),
                         create_by='admin', group_remark='')
@@ -44,45 +44,45 @@ class TaskCenterTests(unittest.TestCase):
         self.folder.cleanup()
 
     def test_unclaimed_schedule_refused_and_claimed_runs_are_guarded(self):
-        task = self.dao.create_task('task-1', 'platform', 'job-1', 'team-a', digest='digest', enabled=True,
+        task = self.repository.create_task('task-1', 'platform', 'job-1', 'team-a', digest='digest', enabled=True,
                                     claimed=False)
-        self.assertIsNone(self.dao.begin_execution('job-1', source='schedule'))
-        claimed = self.dao.claim_task('task-2', 'platform', 'job-1', 'team-a', 'digest', True, 'alice')
+        self.assertIsNone(self.repository.begin_execution('job-1', source='schedule'))
+        claimed = self.repository.claim_task('task-2', 'platform', 'job-1', 'team-a', 'digest', True, 'alice')
         self.assertEqual(claimed.task_id, task.task_id)
 
-        run, created = self.dao.reserve_run(task.task_id, 'run-1', 'request-1', 'manual', 'alice', 'digest')
+        run, created = self.repository.reserve_run(task.task_id, 'run-1', 'request-1', 'manual', 'alice', 'digest')
         self.assertTrue(created)
-        repeated, created = self.dao.reserve_run(task.task_id, 'run-2', 'request-1', 'manual', 'alice', 'digest')
+        repeated, created = self.repository.reserve_run(task.task_id, 'run-2', 'request-1', 'manual', 'alice', 'digest')
         self.assertFalse(created)
         self.assertEqual(repeated.run_id, run.run_id)
-        self.assertTrue(self.dao.mark_submitted(run.run_id))
-        self.assertIsNotNone(self.dao.begin_execution('job-1', task_id=task.task_id, run_id=run.run_id,
+        self.assertTrue(self.repository.mark_submitted(run.run_id))
+        self.assertIsNotNone(self.repository.begin_execution('job-1', task_id=task.task_id, run_id=run.run_id,
                                                       source='manual', actor='alice'))
-        self.assertTrue(self.dao.finish_run(run.run_id, 'unknown', 'lost receipt'))
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'unknown')
-        skipped = self.dao.begin_execution('job-1', task_id=task.task_id, source='schedule')
+        self.assertTrue(self.repository.finish_run(run.run_id, 'unknown', 'lost receipt'))
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'unknown')
+        skipped = self.repository.begin_execution('job-1', task_id=task.task_id, source='schedule')
         self.assertEqual(skipped['status'], 'skipped')
-        self.dao.resolve_run(run.run_id, 'not_executed', 'verified absent', 'alice')
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'clear')
+        self.repository.resolve_run(run.run_id, 'not_executed', 'verified absent', 'alice')
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'clear')
 
     def test_log_cursor_and_team_grants_are_persistent(self):
-        task = self.dao.create_task('task-2', 'platform', 'job-2', 'team-a', digest='d', enabled=True)
-        run, _ = self.dao.reserve_run(task.task_id, 'run-2', 'request-2', 'manual', 'alice', 'd')
-        self.assertEqual(self.dao.append_log(run.run_id, 'one'), 1)
-        self.assertEqual(self.dao.append_log(run.run_id, 'two'), 2)
-        chunks, cursor, loaded = self.dao.get_log_chunks(run.run_id, 1, 1)
+        task = self.repository.create_task('task-2', 'platform', 'job-2', 'team-a', digest='d', enabled=True)
+        run, _ = self.repository.reserve_run(task.task_id, 'run-2', 'request-2', 'manual', 'alice', 'd')
+        self.assertEqual(self.repository.append_log(run.run_id, 'one'), 1)
+        self.assertEqual(self.repository.append_log(run.run_id, 'two'), 2)
+        chunks, cursor, loaded = self.repository.get_log_chunks(run.run_id, 1, 1)
         self.assertEqual(chunks, ['two'])
         self.assertEqual(cursor, 2)
         self.assertEqual(loaded.status, 'requested')
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'logs'], 'admin')
-        self.assertEqual(self.dao.get_grant('team-a', 'alice'), {'view', 'logs'})
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'logs'], 'admin')
+        self.assertEqual(self.repository.get_grant('team-a', 'alice'), {'view', 'logs'})
 
     def test_service_enforces_explicit_team_grant_and_returns_safe_task_dto(self):
         from common import task_center
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        task = self.dao.create_task('task-3', 'platform', 'job-3', 'team-a', digest='d', enabled=True)
-        self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+        task = self.repository.create_task('task-3', 'platform', 'job-3', 'team-a', digest='d', enabled=True)
+        self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
         backend = {'id': 'job-3', 'status': True, 'next_run_time': '', 'trigger': 'interval',
                    'plan': {'seconds': 60}, 'kwargs': {'type': 'local', 'script_text': 'private-script',
                                                         'script_type': 'Python', 'timeout': 20}}
@@ -91,7 +91,7 @@ class TaskCenterTests(unittest.TestCase):
             result = task_center.list_tasks(access)
             self.assertEqual(result['rows'][0]['task_id'], task.task_id)
             self.assertNotIn('private-script', str(result))
-            self.dao.upsert_grant('team-a', 'alice', [], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', [], 'admin')
             denied = task_center.list_tasks(access)
             self.assertEqual(denied['rows'], [])
 
@@ -100,9 +100,9 @@ class TaskCenterTests(unittest.TestCase):
         from dash_callback.application.task_ import task_mgmt_c
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        claimed = self.dao.create_task('claimed-task', 'platform', 'claimed-job', 'team-a',
+        claimed = self.repository.create_task('claimed-task', 'platform', 'claimed-job', 'team-a',
                                        digest='d', enabled=False, claimed=True)
-        unclaimed = self.dao.create_task('unclaimed-task', 'platform', 'unclaimed-job', '',
+        unclaimed = self.repository.create_task('unclaimed-task', 'platform', 'unclaimed-job', '',
                                          digest='d', enabled=False, claimed=False)
         records = [task_center._task_row(task, {
             'id': reference, 'status': False, 'trigger': 'interval',
@@ -152,23 +152,23 @@ class TaskCenterTests(unittest.TestCase):
         started = datetime.now() - timedelta(hours=1)
         SysApschedulerResults.create(job_id='legacy-job', status='ok', log='exact legacy output',
                                      start_datetime=started, finish_datetime=started + timedelta(seconds=3))
-        task = self.dao.create_task('task-legacy', 'platform', 'legacy-job', 'team-a', digest='d',
+        task = self.repository.create_task('task-legacy', 'platform', 'legacy-job', 'team-a', digest='d',
                                     claimed=False)
-        self.dao.claim_task('new-id', 'platform', 'legacy-job', 'team-a', 'd', False,
+        self.repository.claim_task('new-id', 'platform', 'legacy-job', 'team-a', 'd', False,
                             'admin', include_legacy=True)
-        rows, total = self.dao.list_runs(task_ids=[task.task_id], page=1, page_size=10)
+        rows, total = self.repository.list_runs(task_ids=[task.task_id], page=1, page_size=10)
         self.assertEqual(total, 1)
         self.assertEqual(rows[0].source, 'legacy')
         self.assertEqual(rows[0].legacy_start, started)
-        chunks, _, _ = self.dao.get_log_chunks(rows[0].run_id, 0, 10)
+        chunks, _, _ = self.repository.get_log_chunks(rows[0].run_id, 0, 10)
         self.assertEqual(chunks, ['exact legacy output'])
 
     def test_deleted_definition_can_be_recreated_without_reusing_task_id(self):
-        original = self.dao.create_task('old-task', 'platform', 'reused-job', 'team-a', digest='old')
-        self.dao.set_task_state(original.task_id, deleted=True, actor='alice')
-        replacement = self.dao.create_task('new-task', 'platform', 'reused-job', 'team-a', digest='new')
+        original = self.repository.create_task('old-task', 'platform', 'reused-job', 'team-a', digest='old')
+        self.repository.set_task_state(original.task_id, deleted=True, actor='alice')
+        replacement = self.repository.create_task('new-task', 'platform', 'reused-job', 'team-a', digest='new')
         self.assertNotEqual(original.task_id, replacement.task_id)
-        self.assertEqual(self.dao.find_task('platform', 'reused-job').task_id, 'new-task')
+        self.assertEqual(self.repository.find_task('platform', 'reused-job').task_id, 'new-task')
 
     def test_edit_values_hide_password_and_save_preserves_advanced_config(self):
         from common import task_center
@@ -177,9 +177,9 @@ class TaskCenterTests(unittest.TestCase):
         payload = dict(type='ssh', script_text='print(1)', script_type='Python', timeout=30,
                        host='example.invalid', port=22, username='demo', password='private-password',
                        extract_names=['count'], notify_channels=['mail'], env_vars=None)
-        task = self.dao.create_task('edit-task', 'platform', 'edit-job', 'team-a',
+        task = self.repository.create_task('edit-task', 'platform', 'edit-job', 'team-a',
                                     digest=task_center._digest(payload))
-        self.dao.upsert_grant('team-a', 'alice', ['edit'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['edit'], 'admin')
         backend = dict(id='edit-job', status=False, trigger='cron', plan={'second': '0'}, kwargs=payload)
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', return_value=[backend]), \
@@ -210,13 +210,13 @@ class TaskCenterTests(unittest.TestCase):
         start = datetime.now() - timedelta(hours=2)
         SysApschedulerResults.create(job_id='first-claim', status='ok', log='original',
                                     start_datetime=start, finish_datetime=start + timedelta(seconds=1))
-        task = self.dao.claim_task('first-task', 'platform', 'first-claim', 'team-a', '', False,
+        task = self.repository.claim_task('first-task', 'platform', 'first-claim', 'team-a', '', False,
                                    'admin', include_legacy=True)
-        self.assertEqual(self.dao.list_runs(task_ids=[task.task_id])[1], 1)
+        self.assertEqual(self.repository.list_runs(task_ids=[task.task_id])[1], 1)
         with self.database.atomic() as transaction:
-            self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
             transaction.rollback()
-        self.assertEqual(self.dao.get_grant('team-a', 'alice'), set())
+        self.assertEqual(self.repository.get_grant('team-a', 'alice'), set())
 
     def test_migration_dry_run_is_read_only_and_apply_backups_before_pause(self):
         import importlib.util
@@ -230,23 +230,23 @@ class TaskCenterTests(unittest.TestCase):
         report = migration.inventory(self.database, jobs)
         self.assertEqual(report['windows_changes'], 0)
         self.assertEqual(self.database.get_tables(), before)
-        self.assertIsNone(self.dao.find_task('platform', 'legacy'))
+        self.assertIsNone(self.repository.find_task('platform', 'legacy'))
         backups = Path(self.folder.name) / 'backups'
         with patch.object(task_center, '_is_admin', return_value=True), \
                 patch('common.utilities.util_apscheduler.start_stop_job') as pause:
             result = migration.apply_migration(self.database, jobs, backups, 'admin', confirmed=True)
             pause.assert_called_once_with('legacy', False, 'interval')
             self.assertTrue(Path(result['backup']).is_file())
-            self.assertFalse(self.dao.find_task('platform', 'legacy').claimed)
+            self.assertFalse(self.repository.find_task('platform', 'legacy').claimed)
             self.assertEqual(result['status'], 'paused_pending_claim')
 
     def test_run_direct_lookup_and_offline_idempotent_receipt(self):
         from common import task_center
 
-        task = self.dao.create_task('direct-task', 'platform', 'direct-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'direct-run', 'same-key', 'manual', 'alice', 'd')
-        self.dao.finish_run(run.run_id, 'unknown')
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'run'], 'admin')
+        task = self.repository.create_task('direct-task', 'platform', 'direct-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'direct-run', 'same-key', 'manual', 'alice', 'd')
+        self.repository.finish_run(run.run_id, 'unknown')
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'run'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', side_effect=TimeoutError()) as backend:
@@ -263,8 +263,8 @@ class TaskCenterTests(unittest.TestCase):
         payload = {'type': 'local', 'script_text': 'print(1)', 'script_type': 'Python', 'timeout': 20,
                    'extract_names': None, 'notify_channels': None, 'env_vars': None}
         digest = task_center._digest(payload)
-        task = self.dao.create_task('task-run', 'platform', 'job-run', 'team-a', digest=digest)
-        self.dao.upsert_grant('team-a', 'alice', ['run'], 'admin')
+        task = self.repository.create_task('task-run', 'platform', 'job-run', 'team-a', digest=digest)
+        self.repository.upsert_grant('team-a', 'alice', ['run'], 'admin')
         backend = {'id': 'job-run', 'status': True, 'kwargs': payload}
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', return_value=[backend]), \
@@ -289,8 +289,8 @@ class TaskCenterTests(unittest.TestCase):
         payload = {'type': 'local', 'script_text': 'print(2)', 'script_type': 'Python', 'timeout': 20,
                    'extract_names': None, 'notify_channels': None, 'env_vars': None}
         digest = task_center._digest(payload)
-        task = self.dao.create_task('task-unknown', 'platform', 'job-unknown', 'team-a', digest=digest)
-        self.dao.upsert_grant('team-a', 'alice', ['run'], 'admin')
+        task = self.repository.create_task('task-unknown', 'platform', 'job-unknown', 'team-a', digest=digest)
+        self.repository.upsert_grant('team-a', 'alice', ['run'], 'admin')
         backend = {'id': 'job-unknown', 'status': True, 'kwargs': payload}
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', return_value=[backend]), \
@@ -302,28 +302,28 @@ class TaskCenterTests(unittest.TestCase):
         self.assertEqual(result['status'], 'unknown')
         self.assertEqual(repeated['run_id'], 'unknown-run')
         self.assertEqual(submit.call_count, 1)
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'unknown')
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'unknown')
 
     def test_offline_listing_requires_explicit_view_grant(self):
         from common import task_center
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        self.dao.create_task('offline-task', 'platform', 'offline-job', 'team-a', digest='d')
+        self.repository.create_task('offline-task', 'platform', 'offline-job', 'team-a', digest='d')
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', side_effect=ConnectionError):
             self.assertEqual(task_center.list_tasks(access)['rows'], [])
-            self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
             self.assertEqual(task_center.list_tasks(access)['total'], 1)
 
     def test_filters_are_applied_before_pagination(self):
         from common import task_center
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
         backends = []
         for index in range(105):
             job_id = f'job-{index:03}'
-            self.dao.create_task(f'task-{index}', 'platform', job_id, 'team-a', enabled=True)
+            self.repository.create_task(f'task-{index}', 'platform', job_id, 'team-a', enabled=True)
             backends.append({'id': job_id, 'status': True, 'kwargs': {'type': 'ssh' if index == 104 else 'local'}})
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_platform_job_rows', return_value=backends):
@@ -336,7 +336,7 @@ class TaskCenterTests(unittest.TestCase):
         from dash_components.windows_tasks_manager import WindowsTasksManager
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        self.dao.upsert_grant('team-a', 'alice', ['claim', 'run'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['claim', 'run'], 'admin')
         native = {'TaskName': '\\Demo\\Native', 'Status': 'Ready'}
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(WindowsTasksManager, 'get_scheduled_tasks', return_value=[native]), \
@@ -354,19 +354,19 @@ class TaskCenterTests(unittest.TestCase):
         from common import task_center
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        task = self.dao.create_task('log-task', 'platform', 'log-job', 'team-a', digest='d')
-        self.dao.upsert_grant('team-a', 'alice', ['logs'], 'admin')
-        run, _ = self.dao.reserve_run(task.task_id, 'log-run', 'log-request', 'manual', 'alice', 'd')
+        task = self.repository.create_task('log-task', 'platform', 'log-job', 'team-a', digest='d')
+        self.repository.upsert_grant('team-a', 'alice', ['logs'], 'admin')
+        run, _ = self.repository.reserve_run(task.task_id, 'log-run', 'log-request', 'manual', 'alice', 'd')
         for index in range(101):
-            self.dao.append_log(run.run_id, f'line {index}\n')
-        self.dao.finish_run(run.run_id, 'succeeded')
+            self.repository.append_log(run.run_id, f'line {index}\n')
+        self.repository.finish_run(run.run_id, 'succeeded')
         with patch.object(task_center, 'db', return_value=self.database):
             first = task_center.read_log(access, run.run_id, 0, 100)
             self.assertFalse(first['complete'])
             last = task_center.read_log(access, run.run_id, first['cursor'], 100)
             self.assertEqual(last['chunks'], ['line 100\n'])
             self.assertTrue(last['complete'])
-            self.dao.upsert_grant('team-a', 'alice', [], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', [], 'admin')
             with self.assertRaises(task_center.TaskCenterError):
                 task_center.read_log(access, run.run_id)
 
@@ -376,8 +376,8 @@ class TaskCenterTests(unittest.TestCase):
 
         native = dict(TaskName='=FORMULA', Status='Running', **{'Last Result': '0', 'Principal': '@user',
                                                               'MultipleInstancesPolicy': 'IgnoreNew'})
-        self.dao.create_task('export-native', 'windows', native['TaskName'], 'team-a')
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'export'], 'admin')
+        self.repository.create_task('export-native', 'windows', native['TaskName'], 'team-a')
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'export'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(WindowsTasksManager, 'get_scheduled_tasks', return_value=[native]):
@@ -385,16 +385,16 @@ class TaskCenterTests(unittest.TestCase):
             self.assertIn("'=FORMULA", csv_text)
             self.assertIn("'@user", csv_text)
             self.assertIn('IgnoreNew', csv_text)
-            self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
             self.assertNotIn('FORMULA', task_center.export_windows(access))
 
     def test_listener_save_stays_paused_and_keeps_event_definition(self):
         from common import task_center
 
-        self.dao.upsert_grant('team-a', 'alice', ['claim'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['claim'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database), \
-                patch('database.sql_db.dao.dao_listen_task.insert_activa_listen_job') as save, \
+                patch('database.sql_db.repositories.listen_task_repository.insert_activa_listen_job') as save, \
                 patch('common.utilities.util_apscheduler._add_job') as scheduler:
             result = task_center.save_task(access, dict(job_id='listener', group_name='team-a',
                 trigger='listen', type='local', script_text='print(1)', script_type='Python', timeout=20,
@@ -409,7 +409,7 @@ class TaskCenterTests(unittest.TestCase):
 
         payload = dict(type='local', script_text='print(1)', script_type='Python', timeout=20,
                        extract_names=None, notify_channels=None, env_vars=None)
-        task = self.dao.create_task('listen-task', 'platform', 'mail-task', 'team-a', enabled=True,
+        task = self.repository.create_task('listen-task', 'platform', 'mail-task', 'team-a', enabled=True,
                                     digest=task_center._digest(payload))
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(task_center, '_backend_for', return_value=dict(kwargs=payload, trigger='listen', status=True)), \
@@ -419,7 +419,7 @@ class TaskCenterTests(unittest.TestCase):
             self.assertEqual(first['run_id'], second['run_id'])
             submit.assert_called_once()
             self.assertEqual(submit.call_args.args[2]['source_job_id'], 'mail-task')
-            accepted = self.dao.begin_execution('mail-task', task_id=task.task_id,
+            accepted = self.repository.begin_execution('mail-task', task_id=task.task_id,
                 run_id=first['run_id'], source='listen', actor='listener')
             self.assertEqual(accepted['status'], 'running')
 
@@ -430,12 +430,12 @@ class TaskCenterTests(unittest.TestCase):
 
         payload = dict(type='local', script_text='never run', script_type='Python', timeout=20,
                        extract_names=None, notify_channels=[], env_vars=None)
-        task = self.dao.create_task('exec-task', 'platform', 'exec-job', 'team-a', enabled=True,
+        task = self.repository.create_task('exec-task', 'platform', 'exec-job', 'team-a', enabled=True,
                                     digest=task_center._digest(payload))
         with patch.object(app_apscheduler, '_execute_script', return_value='success') as execute:
             self.assertEqual(app_apscheduler.run_script('local', 'never run', 'Python', 'exec-job', []), 'success')
             execute.assert_called_once()
-            self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'clear')
+            self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'clear')
             SysGroup.update(group_status=False).where(SysGroup.group_name == 'team-a').execute()
             app_apscheduler.run_script('local', 'never run', 'Python', 'exec-job', [])
             self.assertEqual(execute.call_count, 1)
@@ -446,76 +446,76 @@ class TaskCenterTests(unittest.TestCase):
 
         payload = dict(type='local', script_text='safe', script_type='Python', timeout=20,
                        extract_names=None, notify_channels=[], env_vars=None)
-        task = self.dao.create_task('recheck-task', 'platform', 'recheck-job', 'team-a', enabled=True,
+        task = self.repository.create_task('recheck-task', 'platform', 'recheck-job', 'team-a', enabled=True,
                                     digest=task_center._digest(payload))
-        run, _ = self.dao.reserve_run(task.task_id, 'recheck-run', 'key', 'manual', 'alice', task.digest)
+        run, _ = self.repository.reserve_run(task.task_id, 'recheck-run', 'key', 'manual', 'alice', task.digest)
         with patch.object(task_center, 'db', return_value=self.database), \
-                patch('database.sql_db.dao.dao_user.get_user_access_meta', return_value={'任务管理-页面'}), \
+                patch('database.sql_db.repositories.user_repository.get_user_access_meta', return_value={'任务管理-页面'}), \
                 patch.object(app_apscheduler, '_execute_script') as execute:
             app_apscheduler.run_script('local', 'safe', 'Python', 'recheck-run', [],
                 task_id=task.task_id, run_id=run.run_id, source='manual', source_job_id='recheck-job')
             execute.assert_not_called()
-            self.assertEqual(self.dao.get_run(run.run_id).status, 'skipped')
+            self.assertEqual(self.repository.get_run(run.run_id).status, 'skipped')
             app_apscheduler.run_script('local', 'changed', 'Python', 'recheck-job', [])
             execute.assert_not_called()
 
     def test_unknown_guard_blocks_other_requests(self):
-        task = self.dao.create_task('guard-task', 'platform', 'guard-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'guard-run', 'one', 'manual', 'alice', 'd')
-        self.dao.finish_run(run.run_id, 'unknown', 'uncertain')
+        task = self.repository.create_task('guard-task', 'platform', 'guard-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'guard-run', 'one', 'manual', 'alice', 'd')
+        self.repository.finish_run(run.run_id, 'unknown', 'uncertain')
         with self.assertRaises(ValueError):
-            self.dao.reserve_run(task.task_id, 'second-run', 'two', 'manual', 'alice', 'd')
+            self.repository.reserve_run(task.task_id, 'second-run', 'two', 'manual', 'alice', 'd')
 
     def test_two_database_connections_allow_only_one_active_request(self):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Barrier
 
-        task = self.dao.create_task('race-task', 'platform', 'race-job', 'team-a', digest='d')
+        task = self.repository.create_task('race-task', 'platform', 'race-job', 'team-a', digest='d')
         barrier = Barrier(2)
 
         def reserve(identity):
             with self.database.connection_context():
                 barrier.wait(timeout=5)
                 try:
-                    return self.dao.reserve_run(task.task_id, identity, identity, 'manual', 'alice', 'd')[1]
+                    return self.repository.reserve_run(task.task_id, identity, identity, 'manual', 'alice', 'd')[1]
                 except ValueError:
                     return False
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(reserve, ['race-a', 'race-b']))
         self.assertEqual(sorted(results), [False, True])
-        self.assertEqual(self.dao.list_runs(task_ids=[task.task_id])[1], 1)
+        self.assertEqual(self.repository.list_runs(task_ids=[task.task_id])[1], 1)
 
     def test_definition_operation_lock_blocks_runs_and_can_be_resolved(self):
-        task = self.dao.create_task('locked-task', 'platform', 'locked-job', 'team-a', digest='d')
-        self.assertTrue(self.dao.begin_definition_update(task.task_id, 'd'))
+        task = self.repository.create_task('locked-task', 'platform', 'locked-job', 'team-a', digest='d')
+        self.assertTrue(self.repository.begin_definition_update(task.task_id, 'd'))
         with self.assertRaises(ValueError):
-            self.dao.reserve_run(task.task_id, 'blocked-run', 'blocked', 'manual', 'alice', 'd')
-        self.dao.mark_definition_unknown(task.task_id)
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'unknown')
-        resolved = self.dao.resolve_definition(task.task_id, 'verified', 'admin', 'external state checked')
+            self.repository.reserve_run(task.task_id, 'blocked-run', 'blocked', 'manual', 'alice', 'd')
+        self.repository.mark_definition_unknown(task.task_id)
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'unknown')
+        resolved = self.repository.resolve_definition(task.task_id, 'verified', 'admin', 'external state checked')
         self.assertEqual(resolved.guard_state, 'clear')
         self.assertFalse(resolved.enabled)
 
     def test_retention_preserves_unknown_runs_and_team_history(self):
         from datetime import datetime, timedelta
         from database.sql_db.entity.table_task_center import TaskRun, TaskOperationAudit
-        from database.sql_db.dao import dao_user
+        from database.sql_db.repositories import user_repository
 
-        task = self.dao.create_task('retention-task', 'platform', 'retention-job', 'team-a', digest='d')
-        first, _ = self.dao.reserve_run(task.task_id, 'expired-run', 'one', 'manual', 'alice', 'd')
-        self.dao.append_log(first.run_id, 'expired output')
-        self.dao.finish_run(first.run_id, 'succeeded')
+        task = self.repository.create_task('retention-task', 'platform', 'retention-job', 'team-a', digest='d')
+        first, _ = self.repository.reserve_run(task.task_id, 'expired-run', 'one', 'manual', 'alice', 'd')
+        self.repository.append_log(first.run_id, 'expired output')
+        self.repository.finish_run(first.run_id, 'succeeded')
         TaskRun.update(finished_at=datetime.now() - timedelta(days=40)).where(TaskRun.run_id == first.run_id).execute()
-        unknown, _ = self.dao.reserve_run(task.task_id, 'unknown-retained', 'two', 'manual', 'alice', 'd')
-        self.dao.append_log(unknown.run_id, 'must survive')
-        self.dao.finish_run(unknown.run_id, 'unknown')
-        self.assertEqual(self.dao.prune_logs(30), 1)
-        self.assertEqual(self.dao.get_log_chunks(unknown.run_id)[0], ['must survive'])
-        self.assertIsNotNone(self.dao.get_run(first.run_id))
+        unknown, _ = self.repository.reserve_run(task.task_id, 'unknown-retained', 'two', 'manual', 'alice', 'd')
+        self.repository.append_log(unknown.run_id, 'must survive')
+        self.repository.finish_run(unknown.run_id, 'unknown')
+        self.assertEqual(self.repository.prune_logs(30), 1)
+        self.assertEqual(self.repository.get_log_chunks(unknown.run_id)[0], ['must survive'])
+        self.assertIsNotNone(self.repository.get_run(first.run_id))
         self.assertTrue(TaskOperationAudit.select().exists())
-        with patch.object(dao_user, 'db', return_value=self.database):
-            self.assertFalse(dao_user.delete_group('team-a'))
+        with patch.object(user_repository, 'db', return_value=self.database):
+            self.assertFalse(user_repository.delete_group('team-a'))
 
     def test_capacity_paged_metadata_and_runs_stay_bounded(self):
         from datetime import datetime, timedelta
@@ -534,7 +534,7 @@ class TaskCenterTests(unittest.TestCase):
                     job_id=f'job-{index % 1000}', group_name='team-a', source='schedule', status='succeeded',
                     requested_at=now - timedelta(seconds=index), finished_at=now - timedelta(seconds=index))
                     for index in range(offset, offset + 500)]).execute()
-        self.dao.upsert_grant('team-a', 'alice', ['view'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['view'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         backends = [dict(id=f'job-{index}', status=True, kwargs={'type': 'local'}) for index in range(1000)]
         samples = []
@@ -553,8 +553,8 @@ class TaskCenterTests(unittest.TestCase):
     def test_new_run_timestamps_are_stored_and_returned_in_utc(self):
         from datetime import timedelta
 
-        task = self.dao.create_task('utc-task', 'platform', 'utc-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'utc-run', 'utc-request', 'manual', 'alice', 'd')
+        task = self.repository.create_task('utc-task', 'platform', 'utc-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'utc-run', 'utc-request', 'manual', 'alice', 'd')
         self.assertEqual(run.requested_at.utcoffset(), timedelta(0))
         stored = self.database.execute_sql('SELECT requested_at FROM sys_task_run WHERE run_id = ?', ('utc-run',)).fetchone()[0]
         self.assertTrue(stored.endswith('+00:00'))
@@ -590,14 +590,14 @@ class TaskCenterTests(unittest.TestCase):
         from common import task_center
         from database.sql_db.entity.table_task_center import TaskRun
 
-        task = self.dao.create_task('latest-task', 'platform', 'latest-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'completed-run', 'key', 'manual', 'alice', 'd')
-        self.dao.append_log(run.run_id, 'completed output')
-        self.dao.finish_run(run.run_id, 'succeeded')
+        task = self.repository.create_task('latest-task', 'platform', 'latest-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'completed-run', 'key', 'manual', 'alice', 'd')
+        self.repository.append_log(run.run_id, 'completed output')
+        self.repository.finish_run(run.run_id, 'succeeded')
         TaskRun.insert_many([dict(run_id=f'pending-{index}', task_id=task.task_id, job_id='latest-job',
             group_name='team-a', source='schedule', status='skipped', requested_at=datetime.now() + timedelta(seconds=index))
             for index in range(101)]).execute()
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'logs', 'export'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'logs', 'export'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database):
             self.assertEqual(task_center.latest_log(access, 'latest-job')['run_id'], run.run_id)
@@ -605,17 +605,17 @@ class TaskCenterTests(unittest.TestCase):
                 self.assertIn('EXPORT TRUNCATED', task_center.export_log(access, run.run_id))
 
     def test_definition_version_blocks_same_script_stale_plan(self):
-        task = self.dao.create_task('version-task', 'platform', 'version-job', 'team-a', digest='same')
-        self.assertTrue(self.dao.begin_definition_update(task.task_id, 'same', 1))
-        self.dao.finish_definition_update(task.task_id, 'same', 'same', 'alice')
-        self.assertFalse(self.dao.begin_definition_update(task.task_id, 'same', 1))
-        self.assertTrue(self.dao.begin_definition_update(task.task_id, 'same', 2))
+        task = self.repository.create_task('version-task', 'platform', 'version-job', 'team-a', digest='same')
+        self.assertTrue(self.repository.begin_definition_update(task.task_id, 'same', 1))
+        self.repository.finish_definition_update(task.task_id, 'same', 'same', 'alice')
+        self.assertFalse(self.repository.begin_definition_update(task.task_id, 'same', 1))
+        self.assertTrue(self.repository.begin_definition_update(task.task_id, 'same', 2))
 
     def test_grant_delegate_cannot_elevate_or_delegate_grant(self):
         from common import task_center
 
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'grant'], 'admin')
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'grant'], 'admin')
         with patch.object(task_center, 'db', return_value=self.database):
             self.assertTrue(task_center.can_manage_grants(access))
             with self.assertRaises(task_center.TaskCenterError):
@@ -624,21 +624,21 @@ class TaskCenterTests(unittest.TestCase):
                 task_center.grant_team(access, 'team-a', 'alice', ['grant'])
 
     def test_unknown_resolution_rejects_blank_reason(self):
-        task = self.dao.create_task('unknown-reason-task', 'platform', 'unknown-reason-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'reason-run', 'key', 'manual', 'alice', 'd')
-        self.dao.finish_run(run.run_id, 'unknown')
+        task = self.repository.create_task('unknown-reason-task', 'platform', 'unknown-reason-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'reason-run', 'key', 'manual', 'alice', 'd')
+        self.repository.finish_run(run.run_id, 'unknown')
         with self.assertRaises(ValueError):
-            self.dao.resolve_run(run.run_id, 'ended', '   ', 'alice')
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'unknown')
+            self.repository.resolve_run(run.run_id, 'ended', '   ', 'alice')
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'unknown')
 
     def test_windows_definition_resolution_requires_native_disabled_state(self):
         from common import task_center
         from dash_components.windows_tasks_manager import WindowsTasksManager
 
-        task = self.dao.create_task('native-definition', 'windows', '\\Demo\\native', 'team-a')
-        self.dao.begin_definition_update(task.task_id, '')
-        self.dao.mark_definition_unknown(task.task_id)
-        self.dao.upsert_grant('team-a', 'alice', ['resolve'], 'admin')
+        task = self.repository.create_task('native-definition', 'windows', '\\Demo\\native', 'team-a')
+        self.repository.begin_definition_update(task.task_id, '')
+        self.repository.mark_definition_unknown(task.task_id)
+        self.repository.upsert_grant('team-a', 'alice', ['resolve'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database), \
                 patch.object(WindowsTasksManager, 'get_scheduled_tasks', return_value=[
@@ -647,21 +647,21 @@ class TaskCenterTests(unittest.TestCase):
                 task_center.resolve_task_definition(access, task.task_id, 'checked native task')
             snapshot.return_value[0]['Status'] = 'Disabled'
             task_center.resolve_task_definition(access, task.task_id, 'confirmed native disabled')
-        self.assertEqual(self.dao.get_task(task.task_id).guard_state, 'clear')
+        self.assertEqual(self.repository.get_task(task.task_id).guard_state, 'clear')
 
     def test_run_unknown_capability_does_not_use_definition_lock_rules(self):
         from common import task_center
 
-        task = self.dao.create_task('resolve-cap-task', 'platform', 'resolve-cap-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'resolve-cap-run', 'key', 'manual', 'alice', 'd')
-        self.dao.finish_run(run.run_id, 'unknown')
-        self.dao.upsert_grant('team-a', 'alice', ['view', 'logs', 'resolve'], 'admin')
+        task = self.repository.create_task('resolve-cap-task', 'platform', 'resolve-cap-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'resolve-cap-run', 'key', 'manual', 'alice', 'd')
+        self.repository.finish_run(run.run_id, 'unknown')
+        self.repository.upsert_grant('team-a', 'alice', ['view', 'logs', 'resolve'], 'admin')
         access = SimpleNamespace(user_name='alice', has_access=lambda permission: True)
         with patch.object(task_center, 'db', return_value=self.database):
             self.assertNotIn('resolve', task_center.task_capabilities(access, task.task_id))
             self.assertIn('resolve', task_center.run_capabilities(access, run.run_id))
             self.assertNotIn('export', task_center.run_capabilities(access, run.run_id))
-            self.dao.upsert_grant('team-a', 'alice', ['view', 'logs'], 'admin')
+            self.repository.upsert_grant('team-a', 'alice', ['view', 'logs'], 'admin')
             self.assertNotIn('resolve', task_center.run_capabilities(access, run.run_id))
 
     def test_version_one_migration_requires_timezone_and_normalizes_legacy_time(self):
@@ -673,9 +673,9 @@ class TaskCenterTests(unittest.TestCase):
         specification = importlib.util.spec_from_file_location('utc_migration', ROOT / 'scripts' / 'migrate_task_center.py')
         migration = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(migration)
-        task = self.dao.create_task('old-time-task', 'platform', 'old-time-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'old-time-run', 'key', 'manual', 'alice', 'd')
-        self.dao.finish_run(run.run_id, 'succeeded')
+        task = self.repository.create_task('old-time-task', 'platform', 'old-time-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'old-time-run', 'key', 'manual', 'alice', 'd')
+        self.repository.finish_run(run.run_id, 'succeeded')
         self.database.execute_sql('UPDATE sys_task_run SET requested_at = ? WHERE run_id = ?',
                                   ('2020-01-01 00:00:00', run.run_id))
         TaskSchemaVersion.get_or_create(component='task_center', defaults={'version': 1})
@@ -685,18 +685,18 @@ class TaskCenterTests(unittest.TestCase):
                 migration.apply_migration(self.database, [], Path(self.folder.name) / 'utc-backup', 'admin', True)
             migration.apply_migration(self.database, [], Path(self.folder.name) / 'utc-backup', 'admin', True,
                                        legacy_timezone='Asia/Shanghai')
-        self.assertEqual(self.dao.get_run(run.run_id).requested_at,
+        self.assertEqual(self.repository.get_run(run.run_id).requested_at,
                          datetime(2019, 12, 31, 16, tzinfo=timezone.utc))
 
     def test_transfer_keeps_historical_team_and_refuses_active_task(self):
-        task = self.dao.create_task('transfer-task', 'platform', 'transfer-job', 'team-a', digest='d')
-        run, _ = self.dao.reserve_run(task.task_id, 'transfer-run', 'key', 'manual', 'alice', 'd')
+        task = self.repository.create_task('transfer-task', 'platform', 'transfer-job', 'team-a', digest='d')
+        run, _ = self.repository.reserve_run(task.task_id, 'transfer-run', 'key', 'manual', 'alice', 'd')
         with self.assertRaises(ValueError):
-            self.dao.transfer_task(task.task_id, 'team-b', 'admin', 'handover')
-        self.dao.finish_run(run.run_id, 'succeeded')
-        self.dao.transfer_task(task.task_id, 'team-b', 'admin', 'handover')
-        self.assertEqual(self.dao.get_task(task.task_id).group_name, 'team-b')
-        self.assertEqual(self.dao.get_run(run.run_id).group_name, 'team-a')
+            self.repository.transfer_task(task.task_id, 'team-b', 'admin', 'handover')
+        self.repository.finish_run(run.run_id, 'succeeded')
+        self.repository.transfer_task(task.task_id, 'team-b', 'admin', 'handover')
+        self.assertEqual(self.repository.get_task(task.task_id).group_name, 'team-b')
+        self.assertEqual(self.repository.get_run(run.run_id).group_name, 'team-a')
 
 
 class SchedulePreviewTests(unittest.TestCase):

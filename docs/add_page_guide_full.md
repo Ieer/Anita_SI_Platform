@@ -25,7 +25,7 @@ python scripts/scaffold_page.py --module analytics --title 分析中心 --subpag
 - `access_metas`：非空且在数据库长度限制内的权限名元组。
 - `render_content(menu_access, **kwargs)`：返回 Dash 组件；URL 查询参数会传入 `kwargs`。
 
-视图文件负责布局，并导入同模块回调文件以注册 Dash callbacks。业务逻辑放在 `src/common/` 或 DAO/service 层，避免把数据操作塞进布局函数。页面和回调的具体文件位置以脚手架生成结果及现有邻近模块为准。
+视图文件负责布局，并导入同模块回调文件以注册 Dash callbacks。业务逻辑放在 `src/common/`、Repository 或 service 层，避免把数据操作塞进布局函数。页面和回调的具体文件位置以脚手架生成结果及现有邻近模块为准。
 
 ## 服务端权限
 

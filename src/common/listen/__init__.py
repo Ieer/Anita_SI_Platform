@@ -1,14 +1,14 @@
 from . import email_pop3
-from database.sql_db.dao.dao_listen import get_listen_api_by_name
-from database.sql_db.dao.dao_listen_task import get_activa_listen_job
+from database.sql_db.repositories.listen_repository import get_listen_api_by_name
+from database.sql_db.repositories.listen_task_repository import get_activa_listen_job
 from common.utilities.util_logger import Log
 from typing import List, Dict
 import json
 import hashlib
 from datetime import datetime, timedelta
-from config.dashgo_conf import ListenTaskConf
+from config.anita_go_conf import ListenTaskConf
 from common.utilities.util_apscheduler import add_ssh_date_job, add_local_date_job, get_job
-from database.sql_db.dao import dao_apscheduler, dao_listen_task
+from database.sql_db.repositories import apscheduler_repository, listen_task_repository
 
 logger = Log.get_logger('active_listen_task')
 
@@ -27,7 +27,7 @@ def email_to_run_date_job(email, jobs, channel_name):
     for job in jobs:
         if job['listen_keyword'] in title:
             run_job_id = _listen_run_job_id(channel_name, job['job_id'], email['uidl'])
-            if dao_apscheduler.has_job_result(run_job_id) or get_job(run_job_id):
+            if apscheduler_repository.has_job_result(run_job_id) or get_job(run_job_id):
                 logger.info(f'邮件"{email["uidl"]}"对应任务"{job["job_id"]}"已派发，跳过重复触发')
                 continue
             logger.info(f'邮件主题"{email["subject"]}"符合"{job["job_id"]}"的关键词检测正在发起任务')
@@ -80,7 +80,7 @@ def active_listen():
                 logger.error(f'"{api_name}"的接口未配置')
                 continue
             params_json = json.loads(listen_api.params_json)
-            last_datetime = dao_listen_task.get_listen_checkpoint(api_name)
+            last_datetime = listen_task_repository.get_listen_checkpoint(api_name)
             if last_datetime is None:
                 last_datetime = datetime.now().astimezone() - timedelta(minutes=ListenTaskConf.PERIOD_MINTUES)
             logger.info(f'监听渠道"{api_name}"的扫描区间为 {last_datetime} 至 {end_datetime}')
@@ -102,4 +102,4 @@ def active_listen():
                 logger.info(f'接口"{api_name}"没有发现新增邮件')
             for email in emails:
                 email_to_run_date_job(email, mapping_listen_job[api_name], api_name)
-            dao_listen_task.set_listen_checkpoint(api_name, end_datetime)
+            listen_task_repository.set_listen_checkpoint(api_name, end_datetime)

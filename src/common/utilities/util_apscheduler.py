@@ -3,8 +3,8 @@ from datetime import date, datetime
 from uuid import uuid4
 from dataclasses import dataclass
 from typing import Optional, Dict, List, cast
-from config.dashgo_conf import ApSchedulerConf
-from database.sql_db.dao import dao_listen_task
+from config.anita_go_conf import ApSchedulerConf
+from database.sql_db.repositories import listen_task_repository
 from common.utilities.util_scheduler_rpc import connect_scheduler_rpc
 
 
@@ -34,7 +34,7 @@ def _decode_json(value):
 def _listen_run_metadata(job_id, job_kwargs):
     if not job_id.startswith('listen_'):
         return {}
-    from database.sql_db.dao import dao_task_center, dao_listen_task
+    from database.sql_db.repositories import task_center_repository, listen_task_repository
 
     fields = ('type', 'script_text', 'script_type', 'timeout', 'host', 'port',
               'username', 'password', 'extract_names', 'notify_channels')
@@ -43,7 +43,7 @@ def _listen_run_metadata(job_id, job_kwargs):
     submitted['extract_names'] = submitted['extract_names'] or None
     submitted['notify_channels'] = submitted['notify_channels'] or None
     matches = []
-    for listener in dao_listen_task.get_activa_listen_job():
+    for listener in listen_task_repository.get_activa_listen_job():
         if not listener.status:
             continue
         candidate = {
@@ -62,7 +62,7 @@ def _listen_run_metadata(job_id, job_kwargs):
         candidate['notify_channels'] = candidate['notify_channels'] or None
         if candidate != submitted:
             continue
-        task = dao_task_center.find_task('platform', listener.job_id)
+        task = task_center_repository.find_task('platform', listener.job_id)
         if task:
             matches.append((listener, task))
     if len(matches) != 1:
@@ -357,7 +357,7 @@ def get_apscheduler_all_jobs():
                 create_by=str(job.create_by),
                 create_datetime=f'{job.create_datetime:%Y-%m-%dT%H:%M:%S}',
             )
-            for job in dao_listen_task.get_activa_listen_job()
+            for job in listen_task_repository.get_activa_listen_job()
         ]
         return aps_job + active_listen_jobs
     except Exception as e:
@@ -369,7 +369,7 @@ def get_apscheduler_all_jobs():
 
 def start_stop_job(job_id, is_start: bool, type_task: str):
     if type_task == 'listen':
-        dao_listen_task.enable_job(job_id=job_id, enable=is_start)
+        listen_task_repository.enable_job(job_id=job_id, enable=is_start)
     else:
         conn = None
         try:
@@ -387,7 +387,7 @@ def start_stop_job(job_id, is_start: bool, type_task: str):
 
 def remove_job(job_id, task_tye):
     if task_tye == 'listen':
-        dao_listen_task.remove_activa_listen_job(job_id=job_id)
+        listen_task_repository.remove_activa_listen_job(job_id=job_id)
     else:
         conn = None
         try:

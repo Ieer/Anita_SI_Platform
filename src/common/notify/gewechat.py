@@ -1,6 +1,6 @@
 import requests
 from common.constant import HttpStatusConstant
-from config.dashgo_conf import ShowConf
+from config.anita_go_conf import ShowConf
 
 
 def send_notify(token, app_id, base_url, title, wxid, desp):

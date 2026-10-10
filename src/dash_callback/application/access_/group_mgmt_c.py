@@ -1,7 +1,7 @@
 from server import app
 from dash.dependencies import Input, Output, State
 import dash
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from dash_components import MessageManager
 from i18n import t__access, t__default
 
@@ -36,14 +36,14 @@ def update_delete_group(nClicksButton, clickedCustom: str):
             group_name,
         ] + [dash.no_update] * 10
     elif clickedCustom.startswith('update:'):
-        group_info = dao_user.get_group_info([group_name], exclude_disabled=False)[0]
-        user_names = [i.user_name for i in dao_user.get_user_info(exclude_disabled=True, exclude_role_admin=True)]
+        group_info = user_repository.get_group_info([group_name], exclude_disabled=False)[0]
+        user_names = [i.user_name for i in user_repository.get_user_info(exclude_disabled=True, exclude_role_admin=True)]
         return [dash.no_update] * 2 + [
             True,
             group_info.group_name,
             bool(group_info.group_status),
             group_info.group_remark,
-            [i.role_name for i in dao_user.get_role_info(exclude_role_admin=True)],
+            [i.role_name for i in user_repository.get_role_info(exclude_role_admin=True)],
             group_info.group_roles,
             user_names,
             group_info.group_admin_users,
@@ -67,7 +67,7 @@ def update_delete_group(nClicksButton, clickedCustom: str):
     prevent_initial_call=True,
 )
 def update_group_c(okCounts, group_name, group_status, group_remark, group_roles, group_admin_users, group_users):
-    rt = dao_user.update_group(group_name, group_status, group_remark, group_roles, group_admin_users, group_users)
+    rt = user_repository.update_group(group_name, group_status, group_remark, group_roles, group_admin_users, group_users)
     if rt:
         MessageManager.success(content=t__access('团队更新成功'))
         return [
@@ -93,7 +93,7 @@ def update_group_c(okCounts, group_name, group_status, group_remark, group_roles
                     },
                 ],
             }
-            for i in dao_user.get_group_info(exclude_disabled=False)
+            for i in user_repository.get_group_info(exclude_disabled=False)
         ]
     else:
         MessageManager.warning(content=t__access('团队更新失败'))
@@ -113,7 +113,7 @@ def check_role_name(group_name):
     """校验新建团队名的有效性"""
     if not group_name:
         return 'error', t__access('请填写团队名')
-    if not dao_user.exists_group_name(group_name):
+    if not user_repository.exists_group_name(group_name):
         return 'success', t__access('该团队名可用')
     else:
         return 'error', t__access('该团队名已存在')
@@ -136,13 +136,13 @@ def check_role_name(group_name):
     prevent_initial_call=True,
 )
 def show_add_group_modal(nClicks):
-    user_names = [i.user_name for i in dao_user.get_user_info(exclude_role_admin=True)]
+    user_names = [i.user_name for i in user_repository.get_user_info(exclude_role_admin=True)]
     return (
         True,
         '',
         True,
         '',
-        [i.role_name for i in dao_user.get_role_info(exclude_role_admin=True)],
+        [i.role_name for i in user_repository.get_role_info(exclude_role_admin=True)],
         [],
         user_names,
         [],
@@ -169,7 +169,7 @@ def add_group(okCounts, group_name, group_status, group_remark, group_roles, gro
     if not group_name:
         MessageManager.warning(content=t__access('团队名不能为空'))
         return dash.no_update
-    rt = dao_user.create_group(group_name, group_status, group_remark, group_roles, group_admin_users, group_users)
+    rt = user_repository.create_group(group_name, group_status, group_remark, group_roles, group_admin_users, group_users)
     if rt:
         MessageManager.success(content=t__access('团队添加成功'))
         return [
@@ -195,7 +195,7 @@ def add_group(okCounts, group_name, group_status, group_remark, group_roles, gro
                     },
                 ],
             }
-            for i in dao_user.get_group_info(exclude_disabled=False)
+            for i in user_repository.get_group_info(exclude_disabled=False)
         ]
     else:
         MessageManager.warning(content=t__access('团队添加失败'))
@@ -211,7 +211,7 @@ def add_group(okCounts, group_name, group_status, group_remark, group_roles, gro
 )
 def delete_role_modal(okCounts, group_name):
     """删除角色"""
-    rt = dao_user.delete_group(group_name)
+    rt = user_repository.delete_group(group_name)
     if rt:
         MessageManager.success(content=t__access('团队删除成功'))
         return [
@@ -237,7 +237,7 @@ def delete_role_modal(okCounts, group_name):
                     },
                 ],
             }
-            for i in dao_user.get_group_info(exclude_disabled=False)
+            for i in user_repository.get_group_info(exclude_disabled=False)
         ]
     else:
         MessageManager.warning(content=t__access('团队删除失败'))

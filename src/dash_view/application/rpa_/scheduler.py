@@ -21,8 +21,8 @@ import datetime as dt
 from i18n import t__access, t__default
 from common.utilities.util_logger import Log
 from common.utilities.util_apscheduler import get_apscheduler_all_jobs
-from database.sql_db.dao.dao_apscheduler import select_extract_values_between
-from database.sql_db.dao.dao_apscheduler import select_latest_results
+from database.sql_db.repositories.apscheduler_repository import select_extract_values_between
+from database.sql_db.repositories.apscheduler_repository import select_latest_results
 from common.utilities.util_apscheduler import add_local_date_job
 from typing import Any
 from dash_components.create_scheduler import create_scheduler

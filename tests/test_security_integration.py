@@ -15,7 +15,7 @@ def oauth_environment(tmp_path):
     from database.sql_db import conn
     from database.sql_db.entity.table_oauth2 import OAuth2Client, OAuth2AuthorizationCode, OAuth2Token
     from database.sql_db.entity.table_user import SysUser, SysRole, SysUserRole, SysRoleAccessMeta, SysGroup, SysGroupRole, SysGroupUser
-    from database.sql_db.dao import dao_oauth2
+    from database.sql_db.repositories import oauth2_repository
     from common.utilities.util_jwt import jwt_encode
     from common.utilities.util_menu_access import cache
     from datetime import datetime
@@ -23,7 +23,7 @@ def oauth_environment(tmp_path):
     models = [OAuth2Client, OAuth2AuthorizationCode, OAuth2Token, SysUser, SysRole, SysUserRole, SysRoleAccessMeta, SysGroup, SysGroupRole, SysGroupUser]
     database = SqliteDatabase(tmp_path / 'oauth-test.db')
     secret = secrets.token_urlsafe(32)
-    with database.bind_ctx(models), patch.object(conn, 'db', return_value=database), patch.object(dao_oauth2, 'db', return_value=database):
+    with database.bind_ctx(models), patch.object(conn, 'db', return_value=database), patch.object(oauth2_repository, 'db', return_value=database):
         database.create_tables(models)
         OAuth2Client.create(client_id='integration', client_secret=secret, redirect_uris='http://127.0.0.1:9876/callback?source=test', scope='userinfo')
         now = datetime.now()
@@ -105,7 +105,7 @@ def test_real_local_scheduler_execution(tmp_path):
     from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
     from peewee import SqliteDatabase
     import app_apscheduler
-    from database.sql_db.dao import dao_apscheduler
+    from database.sql_db.repositories import apscheduler_repository
     from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning, SysApschedulerExtractValue
 
     database = SqliteDatabase(tmp_path / 'scheduler-test.db')
@@ -120,7 +120,7 @@ def test_real_local_scheduler_execution(tmp_path):
         completed.set()
 
     scheduler.add_listener(finished, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
-    with database.bind_ctx(models), patch.object(dao_apscheduler, 'db', return_value=database), \
+    with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database), \
             patch.object(app_apscheduler.tempfile, 'gettempdir', return_value=str(tmp_path)):
         database.create_tables(models)
         scheduler.add_job(app_apscheduler.run_script, 'date', id=job_id, kwargs=dict(type='local', script_text="print('PLATFORM_PROBE_OK')", script_type='Python', job_id=job_id, notify_channels=[], timeout=15))
@@ -132,7 +132,7 @@ def test_real_local_scheduler_execution(tmp_path):
             assert result.status == 'success'
             assert 'PLATFORM_PROBE_OK' in result.log
             assert SysApschedulerRunning.select().count() == 0
-            assert not list(tmp_path.glob('dashgo_*'))
+            assert not list(tmp_path.glob('anitago_*'))
         finally:
             scheduler.shutdown(wait=True)
             database.close()
@@ -143,13 +143,13 @@ def test_local_scheduler_timeout_cleans_temporary_resources(tmp_path):
     from uuid import uuid4
     import app_apscheduler
     from peewee import SqliteDatabase
-    from database.sql_db.dao import dao_apscheduler
+    from database.sql_db.repositories import apscheduler_repository
     from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning, SysApschedulerExtractValue
 
     database = SqliteDatabase(tmp_path / 'scheduler-timeout-test.db')
     models = [SysApschedulerResults, SysApschedulerRunning, SysApschedulerExtractValue]
     job_id = 'platform_timeout_' + uuid4().hex
-    with database.bind_ctx(models), patch.object(dao_apscheduler, 'db', return_value=database), \
+    with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database), \
             patch.object(app_apscheduler.tempfile, 'gettempdir', return_value=str(tmp_path)):
         database.create_tables(models)
         app_apscheduler.run_script(
@@ -163,7 +163,7 @@ def test_local_scheduler_timeout_cleans_temporary_resources(tmp_path):
         result = SysApschedulerResults.get(SysApschedulerResults.job_id == job_id)
         assert result.status == 'timeout'
         assert SysApschedulerRunning.select().count() == 0
-        assert not list(tmp_path.glob('dashgo_*'))
+        assert not list(tmp_path.glob('anitago_*'))
         database.close()
 
 
@@ -172,8 +172,8 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
     from uuid import uuid4
     import app_apscheduler
     from peewee import SqliteDatabase
-    from database.sql_db.dao import dao_apscheduler
-    from database.sql_db.dao import dao_task_center
+    from database.sql_db.repositories import apscheduler_repository
+    from database.sql_db.repositories import task_center_repository
     from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning, SysApschedulerExtractValue
     from database.sql_db.entity.table_task_center import MODELS as TASK_MODELS, TaskDefinition, TaskRun
     from database.sql_db.entity.table_user import SysGroup
@@ -221,8 +221,8 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
     run_id = uuid4().hex
     channel = FakeChannel()
     ssh = FakeSSH(channel)
-    with database.bind_ctx(models), patch.object(dao_apscheduler, 'db', return_value=database), \
-            patch.object(dao_task_center, 'db', return_value=database), \
+    with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database), \
+            patch.object(task_center_repository, 'db', return_value=database), \
             patch.object(app_apscheduler.tempfile, 'gettempdir', return_value=str(tmp_path)), \
             patch.object(app_apscheduler.util_ssh, 'connect_ssh', return_value=ssh), \
             patch.object(app_apscheduler.util_ssh, 'ftp_ssh'):
@@ -236,7 +236,7 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
         digest = _digest(dict(type='ssh', script_text='sleep 10', script_type='Shell',
             notify_channels=[], extract_names=None, env_vars=None, timeout=10 if remote_finished else 1,
             host='example.invalid', port=22, username='probe', password='not-used'))
-        dao_task_center.create_task(
+        task_center_repository.create_task(
             task_id, 'platform', job_id, 'runner-probe', enabled=True, claimed=True, actor='probe',
             digest=digest,
         )
@@ -271,8 +271,8 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
         assert SysApschedulerRunning.select().count() == 0
         assert channel.closed
         assert ssh.closed
-        assert any(command.startswith('rm -f -- /tmp/dashgo_') for command in ssh.commands)
-        assert not list((tmp_path / 'dashgo_sshscript_cache').glob('dashgo_*'))
+        assert any(command.startswith('rm -f -- /tmp/anitago_') for command in ssh.commands)
+        assert not list((tmp_path / 'anitago_sshscript_cache').glob('anitago_*'))
         database.close()
 
 
@@ -448,7 +448,7 @@ def test_windows_task_job_ids_use_full_path_and_fit_scheduler_limit():
 
 
 def test_sqlite_configured_path_is_independent_of_current_directory(tmp_path, monkeypatch):
-    from config.dashgo_conf import PathProj
+    from config.anita_go_conf import PathProj
 
     expected = (PathProj.ROOT_PATH.parent / 'app.db').resolve()
     monkeypatch.chdir(tmp_path)
@@ -473,30 +473,30 @@ def test_scheduler_process_lock_is_exclusive_and_released(tmp_path):
 def test_listen_checkpoint_persists_and_updates(tmp_path):
     from datetime import datetime, timedelta
     from peewee import SqliteDatabase
-    from database.sql_db.dao import dao_listen_task
+    from database.sql_db.repositories import listen_task_repository
     from database.sql_db.entity.table_listen_task import ApschedulerListenCheckpoint
 
     database = SqliteDatabase(tmp_path / 'listen-checkpoint.db')
-    with database.bind_ctx([ApschedulerListenCheckpoint]), patch.object(dao_listen_task, 'db', return_value=database):
-        dao_listen_task.ensure_listen_checkpoint_table()
-        assert dao_listen_task.get_listen_checkpoint('mailbox') is None
+    with database.bind_ctx([ApschedulerListenCheckpoint]), patch.object(listen_task_repository, 'db', return_value=database):
+        listen_task_repository.ensure_listen_checkpoint_table()
+        assert listen_task_repository.get_listen_checkpoint('mailbox') is None
         first = datetime(2026, 10, 2, 10, 0, 0)
         second = first + timedelta(minutes=1)
-        dao_listen_task.set_listen_checkpoint('mailbox', first)
-        assert dao_listen_task.get_listen_checkpoint('mailbox') == first
-        dao_listen_task.set_listen_checkpoint('mailbox', second)
-        assert dao_listen_task.get_listen_checkpoint('mailbox') == second
+        listen_task_repository.set_listen_checkpoint('mailbox', first)
+        assert listen_task_repository.get_listen_checkpoint('mailbox') == first
+        listen_task_repository.set_listen_checkpoint('mailbox', second)
+        assert listen_task_repository.get_listen_checkpoint('mailbox') == second
         database.close()
 
 
 def test_listen_task_edit_updates_existing_row_atomically(tmp_path):
     from datetime import datetime
     from peewee import SqliteDatabase
-    from database.sql_db.dao import dao_listen_task
+    from database.sql_db.repositories import listen_task_repository
     from database.sql_db.entity.table_listen_task import ApschedulerJobsActiveListen
 
     database = SqliteDatabase(tmp_path / 'listen-task-update.db')
-    with database.bind_ctx([ApschedulerJobsActiveListen]), patch.object(dao_listen_task, 'db', return_value=database):
+    with database.bind_ctx([ApschedulerJobsActiveListen]), patch.object(listen_task_repository, 'db', return_value=database):
         database.create_tables([ApschedulerJobsActiveListen])
         now = datetime.now()
         ApschedulerJobsActiveListen.create(
@@ -505,7 +505,7 @@ def test_listen_task_edit_updates_existing_row_atomically(tmp_path):
             notify_channels='[]', extract_names='[]', timeout=10, host='', port=22,
             username='', password='', listen_channels='["mailbox"]', listen_keyword='old',
         )
-        dao_listen_task.update_activa_listen_job(
+        listen_task_repository.update_activa_listen_job(
             'listen-edit', script_text='print(2)', listen_keyword='new', update_datetime=now,
         )
         updated = ApschedulerJobsActiveListen.get(
@@ -538,7 +538,7 @@ def test_email_listen_skips_already_dispatched_message():
         'context': 'body',
     }
     jobs = [{'job_id': 'listener-1', 'listen_keyword': 'report', 'type': 'local'}]
-    with patch('common.listen.dao_apscheduler.has_job_result', return_value=True), \
+    with patch('common.listen.apscheduler_repository.has_job_result', return_value=True), \
             patch('common.listen.get_job') as get_job, \
             patch('common.listen.add_local_date_job') as add_job:
         email_to_run_date_job(email, jobs, 'mailbox')
@@ -588,20 +588,20 @@ def test_email_listen_checkpoint_advances_only_after_success():
     }
     with patch('common.listen.get_activa_listen_job', return_value=[listen_task]), \
             patch('common.listen.get_listen_api_by_name', return_value=[listen_api]), \
-            patch('common.listen.dao_listen_task.get_listen_checkpoint', return_value=None), \
+            patch('common.listen.listen_task_repository.get_listen_checkpoint', return_value=None), \
             patch('common.listen.email_pop3.get_email_context_from_subject_during', return_value=[email]), \
             patch('common.listen.email_to_run_date_job') as dispatch, \
-            patch('common.listen.dao_listen_task.set_listen_checkpoint') as checkpoint:
+            patch('common.listen.listen_task_repository.set_listen_checkpoint') as checkpoint:
         active_listen()
     dispatch.assert_called_once()
     checkpoint.assert_called_once()
 
     with patch('common.listen.get_activa_listen_job', return_value=[listen_task]), \
             patch('common.listen.get_listen_api_by_name', return_value=[listen_api]), \
-            patch('common.listen.dao_listen_task.get_listen_checkpoint', return_value=None), \
+            patch('common.listen.listen_task_repository.get_listen_checkpoint', return_value=None), \
             patch('common.listen.email_pop3.get_email_context_from_subject_during', return_value=[email]), \
             patch('common.listen.email_to_run_date_job', side_effect=RuntimeError('dispatch failed')), \
-            patch('common.listen.dao_listen_task.set_listen_checkpoint') as checkpoint:
+            patch('common.listen.listen_task_repository.set_listen_checkpoint') as checkpoint:
         with pytest.raises(RuntimeError, match='dispatch failed'):
             active_listen()
     checkpoint.assert_not_called()
@@ -872,34 +872,34 @@ def test_log_page_renders_history_when_scheduler_offline():
 def test_log_job_ids_include_completed_and_running_tasks(tmp_path):
     from peewee import SqliteDatabase
     from datetime import datetime
-    from database.sql_db.dao import dao_apscheduler
+    from database.sql_db.repositories import apscheduler_repository
     from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning
 
     database = SqliteDatabase(tmp_path / 'history.db')
     models = [SysApschedulerResults, SysApschedulerRunning]
-    with database.bind_ctx(models), patch.object(dao_apscheduler, 'db', return_value=database):
+    with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database):
         database.create_tables(models)
         now = datetime.now()
         SysApschedulerResults.create(job_id='archived', status='success', log='', start_datetime=now, finish_datetime=now)
         SysApschedulerRunning.create(job_id='running', log='', start_datetime=now, order=0)
-        assert dao_apscheduler.get_log_job_ids() == ['running', 'archived']
+        assert apscheduler_repository.get_log_job_ids() == ['running', 'archived']
         database.close()
 
 
 def test_scheduler_startup_recovers_stale_running_logs(tmp_path):
     from datetime import datetime
     from peewee import SqliteDatabase
-    from database.sql_db.dao import dao_apscheduler
+    from database.sql_db.repositories import apscheduler_repository
     from database.sql_db.entity.table_apscheduler import SysApschedulerResults, SysApschedulerRunning
 
     database = SqliteDatabase(tmp_path / 'stale-runs.db')
     models = [SysApschedulerResults, SysApschedulerRunning]
     start_datetime = datetime(2026, 10, 2, 10, 0, 0)
-    with database.bind_ctx(models), patch.object(dao_apscheduler, 'db', return_value=database):
+    with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database):
         database.create_tables(models)
         SysApschedulerRunning.create(job_id='interrupted-job', log='part-1', order=0, start_datetime=start_datetime)
         SysApschedulerRunning.create(job_id='interrupted-job', log='part-2', order=1, start_datetime=start_datetime)
-        dao_apscheduler.recover_stale_runs()
+        apscheduler_repository.recover_stale_runs()
         result = SysApschedulerResults.get(SysApschedulerResults.job_id == 'interrupted-job')
         assert result.status == 'error'
         assert result.log.startswith('part-1part-2')

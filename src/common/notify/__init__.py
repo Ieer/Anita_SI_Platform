@@ -1,5 +1,5 @@
 from . import server_jiang, enterprise_wechat, email_smtp, gewechat
-from database.sql_db.dao.dao_notify import get_notify_api_by_name
+from database.sql_db.repositories.notify_repository import get_notify_api_by_name
 from common.utilities.util_logger import Log
 from typing import List
 

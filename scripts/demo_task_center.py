@@ -84,7 +84,7 @@ def serve(port=8097):
         stack.enter_context(patch.object(conn, 'db', return_value=database))
         conn.create_rds_table()
         conn.init_rds_data()
-        from database.sql_db.dao import dao_task_center
+        from database.sql_db.repositories import task_center_repository
         from database.sql_db.entity.table_user import SysGroup, SysGroupUser, SysUser, SysUserRole
         from common import task_center
         from common.utilities import util_apscheduler, util_sys
@@ -114,23 +114,23 @@ def serve(port=8097):
                          'month': '*', 'day_of_week': '*', 'timezone': 'Asia/Shanghai'},
                 'next_run_time': (now.astimezone() + timedelta(minutes=5 + index * 5)).isoformat()
                                  if enabled else '', 'kwargs': payload})
-            task = dao_task_center.create_task(f'demo-task-{index}', 'platform', name,
+            task = task_center_repository.create_task(f'demo-task-{index}', 'platform', name,
                 '数据工程' if index in {1, 4} else '运营自动化', digest=task_center._digest(payload), enabled=enabled)
             for attempt in range(3):
                 run_id = f'demo-run-{index}-{attempt}'
-                run, _ = dao_task_center.reserve_run(task.task_id, run_id, run_id, 'manual', 'demo_admin', task.digest)
+                run, _ = task_center_repository.reserve_run(task.task_id, run_id, run_id, 'manual', 'demo_admin', task.digest)
                 started = now - timedelta(hours=attempt * 8 + index, minutes=3)
                 from database.sql_db.entity.table_task_center import TaskRun
                 TaskRun.update(started_at=started, requested_at=started).where(TaskRun.run_id == run_id).execute()
-                dao_task_center.append_log(run_id, f'[DEMO] {name}\n[INFO] batch={index:03}-{attempt}\n')
-                dao_task_center.append_log(run_id, '[INFO] read 240 records\n[INFO] validated schema\n')
+                task_center_repository.append_log(run_id, f'[DEMO] {name}\n[INFO] batch={index:03}-{attempt}\n')
+                task_center_repository.append_log(run_id, '[INFO] read 240 records\n[INFO] validated schema\n')
                 status = 'failed' if index == 3 and attempt == 0 else 'succeeded'
                 if index == 6 and attempt == 2:
                     status = 'unknown'
                 if status == 'failed':
-                    dao_task_center.append_log(run_id, '[ERROR] DEMO-INCIDENT-01: synthetic checksum mismatch.\n')
-                dao_task_center.append_log(run_id, '[INFO] ' + status + '\n')
-                dao_task_center.finish_run(run_id, status, 'isolated demo fixture')
+                    task_center_repository.append_log(run_id, '[ERROR] DEMO-INCIDENT-01: synthetic checksum mismatch.\n')
+                task_center_repository.append_log(run_id, '[INFO] ' + status + '\n')
+                task_center_repository.finish_run(run_id, status, 'isolated demo fixture')
                 if status != 'unknown':
                     TaskRun.update(finished_at=started + timedelta(seconds=22 + index * 7), duration=22 + index * 7).where(
                         TaskRun.run_id == run_id).execute()
@@ -140,16 +140,16 @@ def serve(port=8097):
                         'Principal': 'DEMO\\service', 'MultipleInstancesPolicy': 'IgnoreNew'}
                        for index, name in enumerate(['文件归档', '每日备份', '数据导出'])]
         for index, native in enumerate(native_rows):
-            dao_task_center.create_task(f'demo-windows-{index}', 'windows', native['TaskName'],
+            task_center_repository.create_task(f'demo-windows-{index}', 'windows', native['TaskName'],
                                         '运营自动化', enabled=True)
 
-        running_task = dao_task_center.get_task('demo-task-7')
-        running, _ = dao_task_center.reserve_run(running_task.task_id, 'demo-live-run',
+        running_task = task_center_repository.get_task('demo-task-7')
+        running, _ = task_center_repository.reserve_run(running_task.task_id, 'demo-live-run',
             'demo-live-request', 'manual', 'demo_admin', running_task.digest)
-        dao_task_center.mark_submitted(running.run_id)
+        task_center_repository.mark_submitted(running.run_id)
         TaskRun.update(status='running', started_at=now - timedelta(minutes=3),
                        requested_at=now - timedelta(minutes=3)).where(TaskRun.run_id == running.run_id).execute()
-        dao_task_center.append_log(running.run_id, '[DEMO] Simulated ongoing report delivery. No external action.\n')
+        task_center_repository.append_log(running.run_id, '[DEMO] Simulated ongoing report delivery. No external action.\n')
 
         def all_jobs():
             return [SimpleNamespace(job_id=row['id'], status=row['status'], trigger=row['trigger'],
@@ -159,10 +159,10 @@ def serve(port=8097):
             run_id = job_kwargs.get('run_id')
             if run_id:
                 task_id = job_kwargs['task_id']
-                dao_task_center.begin_execution(job_kwargs['source_job_id'], task_id=task_id,
+                task_center_repository.begin_execution(job_kwargs['source_job_id'], task_id=task_id,
                     run_id=run_id, source=job_kwargs['source'], actor='demo_admin')
-                dao_task_center.append_log(run_id, '[DEMO] Simulated execution only. No script, SSH or native task executed.\n')
-                dao_task_center.finish_run(run_id, 'succeeded', 'isolated demo executor')
+                task_center_repository.append_log(run_id, '[DEMO] Simulated execution only. No script, SSH or native task executed.\n')
+                task_center_repository.finish_run(run_id, 'succeeded', 'isolated demo executor')
             else:
                 previous = next((row for row in backend_rows if row['id'] == job_id), None)
                 if previous and not replace_existing:

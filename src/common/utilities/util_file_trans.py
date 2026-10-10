@@ -1,7 +1,7 @@
 import base64
 from io import BytesIO
 from PIL import Image
-from config.dashgo_conf import PathProj
+from config.anita_go_conf import PathProj
 
 
 class AvatarFile:

@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / 'src'))
 sys.path.insert(0, str(ROOT / 'scripts'))
 
 util_startup = importlib.import_module('common.utilities.util_startup')
+anita_go_config = importlib.import_module('config.anita_go_conf')
 DEFAULT_STARTUP_MODE = util_startup.DEFAULT_STARTUP_MODE
 StartupConfigError = util_startup.StartupConfigError
 load_startup_config = util_startup.load_startup_config
@@ -28,6 +29,21 @@ class StartupConfigTests(unittest.TestCase):
 
     def tearDown(self):
         self.folder.cleanup()
+
+    def test_config_path_prefers_new_name_and_falls_back_to_legacy_name(self):
+        config_dir = Path(self.folder.name)
+        legacy_config = config_dir / 'dashgo.ini'
+        current_config = config_dir / 'anita_go.ini'
+
+        legacy_config.touch()
+        self.assertEqual(anita_go_config.resolve_config_file_path(config_dir), legacy_config)
+
+        current_config.touch()
+        self.assertEqual(anita_go_config.resolve_config_file_path(config_dir), current_config)
+
+        current_config.unlink()
+        legacy_config.unlink()
+        self.assertEqual(anita_go_config.resolve_config_file_path(config_dir), current_config)
 
     def test_missing_file_uses_default_without_creating_it(self):
         self.assertEqual(load_startup_config(self.path), {
@@ -147,11 +163,11 @@ class StartupConfigTests(unittest.TestCase):
         scheduler = Mock()
         scheduler.get_jobs.return_value = []
         with patch.object(scheduler_module, 'SchedulerRPCAuthenticator'), \
-                patch('database.sql_db.dao.dao_listen_task.ensure_listen_checkpoint_table'), \
+                patch('database.sql_db.repositories.listen_task_repository.ensure_listen_checkpoint_table'), \
                 patch.object(scheduler_module, 'SQLAlchemyJobStore'), \
                 patch.object(scheduler_module, '_task_center_schema_version', return_value=2), \
                 patch.object(scheduler_module, 'recover_stale_runs'), \
-                patch('database.sql_db.dao.dao_task_center.recover_runs'), \
+                patch('database.sql_db.repositories.task_center_repository.recover_runs'), \
                 patch.object(scheduler_module, 'BackgroundScheduler', return_value=scheduler), \
                 patch.object(scheduler_module, 'ThreadedServer', side_effect=RuntimeError('rpc probe')), \
                 patch.dict(scheduler_module.__dict__, {'scheduler': scheduler}), \

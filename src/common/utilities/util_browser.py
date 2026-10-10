@@ -2,7 +2,7 @@ from flask import request
 from user_agents import parse
 from typing import Literal, Optional
 from dataclasses import dataclass
-from config.dashgo_conf import ProxyConf
+from config.anita_go_conf import ProxyConf
 
 browser_type = Literal['chrome', 'firefox', 'safari', 'ie']
 

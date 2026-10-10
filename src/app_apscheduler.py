@@ -31,8 +31,8 @@ from common.listen import active_listen
 from common.utilities import util_ssh
 from common.utilities.util_process_lock import ProcessFileLock
 from common.utilities.util_scheduler_rpc import SchedulerRPCAuthenticator
-from config.dashgo_conf import ApSchedulerConf, ListenTaskConf, PathProj, SqlDbConf
-from database.sql_db.dao.dao_apscheduler import (
+from config.anita_go_conf import ApSchedulerConf, ListenTaskConf, PathProj, SqlDbConf
+from database.sql_db.repositories.apscheduler_repository import (
     delete_apscheduler_running,
     delete_expire_data,
     insert_apscheduler_extract_value,
@@ -142,9 +142,9 @@ def _execute_script(
 
     def persist_task_log(output):
         if output and _task_run_id:
-            from database.sql_db.dao import dao_task_center
+            from database.sql_db.repositories import task_center_repository
 
-            dao_task_center.append_log(_task_run_id, output)
+            task_center_repository.append_log(_task_run_id, output)
 
     def pop_from_stdout(stdout, event: threading.Event, queue_stdout: Queue, encoding='utf8', stop_on_eof=False):
         while not event.is_set():
@@ -219,7 +219,7 @@ def _execute_script(
                 delete=False,
                 mode='w',
                 dir=tempfile.gettempdir(),
-                prefix='dashgo_',
+                prefix='anitago_',
                 suffix=suffix,
                 encoding=encoding,
             ) as script_file:
@@ -311,7 +311,7 @@ def _execute_script(
                 os.remove(script_filepath)
     elif type == 'ssh':
         tempdir = tempfile.gettempdir()
-        sshscript_cache = os.path.join(tempdir, 'dashgo_sshscript_cache')
+        sshscript_cache = os.path.join(tempdir, 'anitago_sshscript_cache')
         if not os.path.exists(sshscript_cache):
             os.makedirs(sshscript_cache)
         # ssh默认都认为是linux系统
@@ -320,7 +320,7 @@ def _execute_script(
             mode='w',
             newline='\n',
             dir=sshscript_cache,
-            prefix=f'dashgo_{datetime.now().timestamp()}',
+            prefix=f'anitago_{datetime.now().timestamp()}',
             suffix=suffix,
             encoding='utf-8',
         ) as f:
@@ -510,10 +510,10 @@ def _execute_script(
 
 
 def _execution_target(task_id, source_job_id):
-    from database.sql_db.dao import dao_task_center
+    from database.sql_db.repositories import task_center_repository
 
-    task = (dao_task_center.get_task(task_id) if task_id
-            else dao_task_center.find_task('platform', source_job_id))
+    task = (task_center_repository.get_task(task_id) if task_id
+            else task_center_repository.find_task('platform', source_job_id))
     if (task is None or task.engine != 'platform' or task.backend_ref != source_job_id
             or not task.claimed or not task.enabled or task.deleted):
         return None
@@ -547,7 +547,7 @@ def run_script(
     source_job_id=None,
 ):
     """Compatibility entry point for persisted APScheduler callables and guarded runs."""
-    from database.sql_db.dao import dao_task_center
+    from database.sql_db.repositories import task_center_repository
 
     backend_job_id = source_job_id or job_id
     if source not in {'schedule', 'manual', 'agent', 'retry', 'listen'}:
@@ -555,7 +555,7 @@ def run_script(
     task = _execution_target(task_id, backend_job_id)
     if task is None:
         if run_id:
-            dao_task_center.finish_run(run_id, 'skipped', 'task or team disabled before execution')
+            task_center_repository.finish_run(run_id, 'skipped', 'task or team disabled before execution')
         return None
     run_id = run_id or uuid4().hex
     from common import task_center
@@ -569,18 +569,18 @@ def run_script(
             raise ValueError('execution payload does not match claimed definition')
         if source in {'manual', 'agent'}:
             from types import SimpleNamespace
-            from database.sql_db.dao.dao_user import get_user_access_meta
-            request = dao_task_center.get_run(run_id)
+            from database.sql_db.repositories.user_repository import get_user_access_meta
+            request = task_center_repository.get_run(run_id)
             if request is None or request.task_id != task.task_id or request.source != source or request.digest != task.digest:
                 raise ValueError('run metadata mismatch')
             permissions = get_user_access_meta(request.actor)
             task_center._task_access(SimpleNamespace(user_name=request.actor,
                 has_access=lambda permission: permission in permissions), task, 'run')
     except Exception:
-        dao_task_center.finish_run(run_id, 'skipped', 'definition or actor authorization changed before execution')
+        task_center_repository.finish_run(run_id, 'skipped', 'definition or actor authorization changed before execution')
         return None
     try:
-        run = dao_task_center.begin_execution(
+        run = task_center_repository.begin_execution(
             backend_job_id,
             task_id=task.task_id,
             run_id=run_id,
@@ -589,14 +589,14 @@ def run_script(
         )
     except Exception:
         try:
-            dao_task_center.finish_run(run_id, 'unknown', 'execution guard outcome was ambiguous')
+            task_center_repository.finish_run(run_id, 'unknown', 'execution guard outcome was ambiguous')
         except Exception:
             pass
         return None
     if not run or run.get('status') != 'running':
         return None
     if _execution_target(task.task_id, backend_job_id) is None:
-        dao_task_center.finish_run(run_id, 'skipped', 'task or team was disabled before execution')
+        task_center_repository.finish_run(run_id, 'skipped', 'task or team was disabled before execution')
         return None
 
     try:
@@ -623,14 +623,14 @@ def run_script(
             'success': 'succeeded', 'error': 'failed', 'timeout': 'timeout',
             'unknown': 'unknown',
         }.get(outcome, 'unknown')
-        if not dao_task_center.finish_run(run_id, terminal, 'executor outcome: ' + str(outcome)):
-            current = dao_task_center.get_run(run_id)
+        if not task_center_repository.finish_run(run_id, terminal, 'executor outcome: ' + str(outcome)):
+            current = task_center_repository.get_run(run_id)
             if current and current.status in {'requested', 'submitted', 'running'}:
-                dao_task_center.finish_run(run_id, 'unknown', 'terminal state write was ambiguous')
+                task_center_repository.finish_run(run_id, 'unknown', 'terminal state write was ambiguous')
         return outcome
     except Exception as error:
         try:
-            dao_task_center.finish_run(
+            task_center_repository.finish_run(
                 run_id, 'unknown', f'execution outcome is uncertain: {error.__class__.__name__}')
         except Exception:
             pass
@@ -876,7 +876,7 @@ class SchedulerService(rpyc.Service):
 
 def delete_expire_data_for_cron(day):
     delete_expire_data(day)
-    from database.sql_db.dao.dao_task_center import prune_logs
+    from database.sql_db.repositories.task_center_repository import prune_logs
     prune_logs(day)
 
 
@@ -960,7 +960,7 @@ def run_scheduler_service(start_paused=False):
     scheduler_instance = None
     server_instance = None
     try:
-        from database.sql_db.dao.dao_listen_task import ensure_listen_checkpoint_table
+        from database.sql_db.repositories.listen_task_repository import ensure_listen_checkpoint_table
 
         ensure_listen_checkpoint_table()
         if SqlDbConf.RDB_TYPE == 'sqlite':
@@ -1003,10 +1003,10 @@ def run_scheduler_service(start_paused=False):
                 'last_job_error': None,
             })
         scheduler_instance.start(paused=True)
-        from database.sql_db.dao import dao_task_center
+        from database.sql_db.repositories import task_center_repository
 
         if recover_task_center_runs:
-            dao_task_center.recover_runs()
+            task_center_repository.recover_runs()
         for restored_job in scheduler_instance.get_jobs():
             if restored_job.id not in (CLEAR_JOB_ID, LISTEN_JOB_ID):
                 scheduler_instance.modify_job(

@@ -68,10 +68,12 @@ python scripts/scaffold_page.py --module analytics --title 分析中心 --subpag
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements_win.txt
-Copy-Item src\config\dashgo.ini.example src\config\dashgo.ini
+Copy-Item src\config\anita_go.ini.example src\config\anita_go.ini
 ```
 
-首次启动前编辑 `src/config/dashgo.ini`，为 `CommonConf.ENCRYPT_KEY`、`FlaskConf.COOKIE_SESSION_SECRET_KEY` 和 `JwtConf.JWT_SECRET_KEY` 分别生成并填写独立随机值。加密密钥应为 32 个随机字节的 64 位十六进制文本；不要使用模板占位符，也不要把实际配置提交到 Git。
+已有 `src/config/dashgo.ini` 配置会在新配置文件不存在时自动兼容读取；新部署请使用 `anita_go.ini`。
+
+首次启动前编辑 `src/config/anita_go.ini`，为 `CommonConf.ENCRYPT_KEY`、`FlaskConf.COOKIE_SESSION_SECRET_KEY` 和 `JwtConf.JWT_SECRET_KEY` 分别生成并填写独立随机值。加密密钥应为 32 个随机字节的 64 位十六进制文本；不要使用模板占位符，也不要把实际配置提交到 Git。
 
 可在 PowerShell 中生成随机值：
 
@@ -80,15 +82,14 @@ python -c "import secrets; print(secrets.token_hex(32))"
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-初始化数据库后，以暂停调度模式启动 Web 和独立 scheduler：
+首次完成依赖安装及密钥配置后，初始化数据库并启动 Web 和独立 scheduler：
 
 ```powershell
 python scripts/start_ap.py --only-init
-$env:SMART_AGENT_SCHEDULER_RPC_SECRET = python -c "import secrets; print(secrets.token_urlsafe(48))"
-python scripts/start_ap.py --scheduler-mode paired_paused
+.\start.bat
 ```
 
-Web 默认访问地址为 `http://127.0.0.1:8090`。首次初始化会创建 `admin` 账号，初始密码为 `admin123`；首次登录后必须立即修改。`paired_paused` 不恢复已有调度任务。确认目标数据库中的任务、脚本和外部影响后，再按[任务中心指南](docs/task_center.md)决定是否恢复。
+`start.bat` 使用项目 `.venv` 中的 Python，显式以 `paired_paused` 模式启动；若当前环境未设置 `SMART_AGENT_SCHEDULER_RPC_SECRET`，会为本次启动临时生成，不写入文件。双击 `start.bat` 也可启动。该脚本不会安装依赖或初始化数据库。Web 默认访问地址为 `http://127.0.0.1:8090`。首次初始化会创建 `admin` 账号，初始密码为 `admin123`；首次登录后必须立即修改。`paired_paused` 不恢复已有调度任务。确认目标数据库中的任务、脚本和外部影响后，再按[任务中心指南](docs/task_center.md)决定是否恢复。
 
 只运行 Web、不启动 scheduler：
 
@@ -98,7 +99,7 @@ python scripts/start_ap.py --scheduler-mode web_only
 
 如果 Web 要连接另一个 scheduler，Web 与 scheduler 必须配置相同的 `SMART_AGENT_SCHEDULER_RPC_SECRET`（至少 32 个 UTF-8 字节）。不要将 RPC 暴露到公网。启动策略、维护迁移和停止行为见[任务中心指南](docs/task_center.md)。
 
-`src/config/dashgo.ini.example` 是配置模板；实际配置文件已被 Git 忽略。`.env.example` 只列出可选环境变量，程序不会自动加载 dotenv 文件。Agent 配置示例和审批限制见下文及[安全说明](docs/security_audit.md)。
+`src/config/anita_go.ini.example` 是配置模板；实际配置文件已被 Git 忽略。`.env.example` 只列出可选环境变量，程序不会自动加载 dotenv 文件。Agent 配置示例和审批限制见下文及[安全说明](docs/security_audit.md)。
 
 ## Agent 配置
 
@@ -157,7 +158,7 @@ src/
   config/                页面注册和本地配置模板
   dash_callback/         Dash 回调
   dash_view/             页面视图
-  database/              Peewee 实体与 DAO
+  database/              Peewee 实体与 Repository
   assets/                CSS、JavaScript、图像和前端依赖
   translations/          国际化词条
 tests/                   单元、集成和 opt-in 浏览器测试

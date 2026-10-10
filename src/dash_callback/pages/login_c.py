@@ -1,5 +1,5 @@
 import feffery_utils_components as fuc
-from config.dashgo_conf import LoginConf
+from config.anita_go_conf import LoginConf
 from dash import dcc
 from dash.dependencies import Input, Output, State
 from server import app
@@ -264,10 +264,10 @@ def login(
         )
 
     def user_login(user_name: str, password_sha256: str, is_keep_login_status: bool) -> bool:
-        from database.sql_db.dao import dao_user
+        from database.sql_db.repositories import user_repository
         from common.utilities.util_jwt import jwt_encode_save_access_to_session
 
-        if dao_user.user_password_verify(user_name=user_name, password_sha256=password_sha256):
+        if user_repository.user_password_verify(user_name=user_name, password_sha256=password_sha256):
             jwt_encode_save_access_to_session({'user_name': user_name}, session_permanent=is_keep_login_status)
             return True
         return False
@@ -309,12 +309,12 @@ def otp_login(otp_value, user_name, href):
     if not user_name or not isinstance(otp_value, str) or len(otp_value) != 6 or not otp_value.isascii() or not otp_value.isdigit():
         raise PreventUpdate
     from otpauth import TOTP
-    from database.sql_db.dao import dao_user
+    from database.sql_db.repositories import user_repository
     from common.utilities.util_jwt import jwt_encode_save_access_to_session
 
     if not allow_login_attempt(user_name):
         return fuc.FefferyFancyMessage('尝试次数过多，请稍后再试', type='error'), None
-    otp_secret = dao_user.get_otp_secret(user_name)
+    otp_secret = user_repository.get_otp_secret(user_name)
     if not otp_secret:
         return (
             fuc.FefferyFancyMessage(t__other('用户未配置动态码'), type='error'),

@@ -2,7 +2,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import base64
 from Crypto.Random import get_random_bytes
-from config.dashgo_conf import CommonConf
+from config.anita_go_conf import CommonConf
 from typing import Optional
 
 

@@ -80,7 +80,7 @@ def serve_probe(port):
         stack.enter_context(patch('common.utilities.util_apscheduler.get_apscheduler_all_jobs', return_value=[job]))
         from datetime import datetime
         from common import task_center
-        from database.sql_db.dao import dao_task_center
+        from database.sql_db.repositories import task_center_repository
         from database.sql_db.entity.table_user import SysGroup
 
         SysGroup.create(group_name='ui-team', group_status=True, group_remark='',
@@ -89,7 +89,7 @@ def serve_probe(port):
                        timeout=job.timeout, extract_names=None, notify_channels=[], env_vars=None)
         stack.enter_context(patch.object(task_center, '_platform_job_rows', return_value=[
             dict(id=job.job_id, status=True, trigger=job.trigger, plan=job.plan, kwargs=payload)]))
-        dao_task_center.create_task('ui-task', 'platform', job.job_id, 'ui-team',
+        task_center_repository.create_task('ui-task', 'platform', job.job_id, 'ui-team',
                                     digest=task_center._digest(payload), enabled=True)
 
         def submit(trigger, trigger_args, job_kwargs, job_id, **options):
@@ -100,7 +100,7 @@ def serve_probe(port):
         import app as platform_app
         from flask import jsonify, redirect, make_response
         from common.utilities.util_jwt import jwt_encode
-        from database.sql_db.dao import dao_agent
+        from database.sql_db.repositories import agent_repository
 
         server = platform_app.server
 
@@ -116,7 +116,7 @@ def serve_probe(port):
         @server.get('/_ui/stats')
         def probe_stats():
             return jsonify(calls=len(calls), submissions=len(submissions),
-                           conversations=len(dao_agent.list_conversations('ui_alice')))
+                           conversations=len(agent_repository.list_conversations('ui_alice')))
 
         @server.post('/_ui/release')
         def probe_release():

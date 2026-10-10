@@ -292,7 +292,7 @@ class LoginTests(unittest.TestCase):
                                user_sex='未知', user_email='probe@example.test', phone_number='555-0100',
                                user_remark='Isolated demo account')
         with server.test_request_context('/person_/personal_info'):
-            with patch('dash_view.application.person_.personal_info.dao_user.get_user_info', return_value=[user]):
+            with patch('dash_view.application.person_.personal_info.user_repository.get_user_info', return_value=[user]):
                 layout = json.dumps(render_content(SimpleNamespace(user_name=user.user_name)),
                                     cls=PlotlyJSONEncoder, ensure_ascii=False)
 
@@ -402,7 +402,7 @@ class RoutingTests(unittest.TestCase):
                                  has_access=lambda permission: True, user_name='ui_probe',
                                  user_info=SimpleNamespace(user_name='ui_probe', user_full_name='UI Probe'))
         with server.test_request_context('/'), patch(
-                'database.sql_db.dao.dao_announcement.get_announcement', return_value=None):
+                'database.sql_db.repositories.announcement_repository.get_announcement', return_value=None):
             layout = render_content(access, 'http://localhost/dashboard_/workbench')
             serialized = json.dumps(layout, cls=PlotlyJSONEncoder)
         self.assertEqual(layout.className, 'platform-shell')
@@ -424,7 +424,7 @@ class RoutingTests(unittest.TestCase):
         access = SimpleNamespace(user_name='ui_probe', user_info=SimpleNamespace(
             user_name='ui_probe', user_full_name='UI Probe'))
         with server.test_request_context('/'), patch(
-                'database.sql_db.dao.dao_announcement.get_announcement', return_value=None):
+                'database.sql_db.repositories.announcement_repository.get_announcement', return_value=None):
             header = json.dumps(render_head_content(access), cls=PlotlyJSONEncoder)
         self.assertNotIn('img.shields.io', header)
         self.assertNotIn('badge/star', header)

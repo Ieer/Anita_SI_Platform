@@ -1,7 +1,7 @@
 from server import app
 from dash.dependencies import Input, Output, State
 import dash
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from dash_components import MessageManager
 from typing import List
 from i18n import t__access, t__default
@@ -38,7 +38,7 @@ def get_data():
                 ),
             ],
         }
-        for i in dao_user.get_role_info(exclude_disabled=False)
+        for i in user_repository.get_role_info(exclude_disabled=False)
     ]
 
 
@@ -75,7 +75,7 @@ def update_delete_role(nClicksButton, clickedCustom: str):
             dash.no_update,
         ]
     elif clickedCustom.startswith('update:'):
-        role_info = dao_user.get_role_info([role_name], exclude_disabled=False)[0]
+        role_info = user_repository.get_role_info([role_name], exclude_disabled=False)[0]
         return [
             dash.no_update,
             dash.no_update,
@@ -103,7 +103,7 @@ def update_delete_role(nClicksButton, clickedCustom: str):
 )
 def callback_func(okCounts, role_name: str, role_status: bool, role_remark: str, access_metas: List[str]):
     access_metas = [i for i in access_metas if not i.startswith('ignore:')]
-    rt = dao_user.update_role(role_name, role_status, role_remark, access_metas)
+    rt = user_repository.update_role(role_name, role_status, role_remark, access_metas)
     if rt:
         MessageManager.success(content=t__access('角色更新成功'))
         return get_data()
@@ -121,7 +121,7 @@ def callback_func(okCounts, role_name: str, role_status: bool, role_remark: str,
 )
 def delete_role_modal(okCounts, role_name):
     """删除角色"""
-    rt = dao_user.delete_role(role_name)
+    rt = user_repository.delete_role(role_name)
     if rt:
         MessageManager.success(content=t__access('角色删除成功'))
         return get_data()
@@ -143,7 +143,7 @@ def check_role_name(role_name):
     """校验新建角色名的有效性"""
     if not role_name:
         return 'error', t__access('请填写角色名')
-    if not dao_user.exists_role_name(role_name):
+    if not user_repository.exists_role_name(role_name):
         return 'success', t__access('该角色名可用')
     else:
         return 'error', t__access('该角色名已存在')
@@ -184,7 +184,7 @@ def add_role_c(okCounts, name, role_status, role_remark, access_metas: List[str]
         MessageManager.warning(content=t__access('角色名不能为空'))
         return dash.no_update
     access_metas = [i for i in access_metas if not i.startswith('ignore:')]
-    rt = dao_user.create_role(name, role_status, role_remark, access_metas)
+    rt = user_repository.create_role(name, role_status, role_remark, access_metas)
     if rt:
         MessageManager.success(content=t__access('角色添加成功'))
         return get_data()

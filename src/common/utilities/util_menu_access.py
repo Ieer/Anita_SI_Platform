@@ -12,16 +12,16 @@ logger = Log.get_logger(__name__)
 
 class MenuAccess:
     def get_user_all_access_metas(self, user_info) -> Set[str]:
-        from database.sql_db.dao import dao_user
+        from database.sql_db.repositories import user_repository
         from config.access_factory import AccessFactory
 
-        # user_info is expected to be a dao_user.UserInfo-like object
+        # user_info is expected to be a user_repository.UserInfo-like object
         user_name = user_info.user_name
-        all_access_metas: Set[str] = dao_user.get_user_access_meta(user_name=user_name, exclude_disabled=True)
+        all_access_metas: Set[str] = user_repository.get_user_access_meta(user_name=user_name, exclude_disabled=True)
         # 所有用户添加默认权限
         all_access_metas.update(AccessFactory.default_access_meta)
         # 团队管理员添加默认权限
-        if dao_user.is_group_admin(user_name):
+        if user_repository.is_group_admin(user_name):
             all_access_metas.update(AccessFactory.group_access_meta)
         # 添加额外权限
         all_access_metas.update(self.get_extra_access_meta(user_info.user_roles))
@@ -255,12 +255,12 @@ class MenuAccess:
         return AccessFactory.get_dict_access_meta2menu_item()
 
     def __init__(self, user_name) -> None:
-        from database.sql_db.dao import dao_user
+        from database.sql_db.repositories import user_repository
 
         # 获取应用全部的权限元和菜单的对应关系
         self.user_name = user_name
         try:
-            self.user_info: dao_user.UserInfo = dao_user.get_user_info([user_name], exclude_disabled=True, exclude_role_admin=False)[0]
+            self.user_info: user_repository.UserInfo = user_repository.get_user_info([user_name], exclude_disabled=True, exclude_role_admin=False)[0]
         except IndexError:
             raise NotFoundUserException(message=f'用户{user_name}尝试登录，但该用户不存在，可能已被删除')
         # 用户所有的权限元

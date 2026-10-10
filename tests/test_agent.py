@@ -69,7 +69,7 @@ class AgentTests(unittest.TestCase):
                 with self.subTest(name=name), self.assertRaises(AgentError):
                     execute_tool(name, {'limit': 5}, access('工作台-页面'))
             query.assert_not_called()
-        with patch('database.sql_db.dao.dao_apscheduler.get_latest_completed_log') as query:
+        with patch('database.sql_db.repositories.apscheduler_repository.get_latest_completed_log') as query:
             with self.assertRaises(AgentError):
                 execute_tool('read_latest_log', {'job_id': 'probe'}, access('工作台-页面', '任务日志-页面'))
             query.assert_not_called()
@@ -245,7 +245,7 @@ class AgentTests(unittest.TestCase):
         with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe',
                                     'SMART_AGENT_RUN_ALLOWLIST': '["probe"]'}), \
                 patch('common.utilities.util_apscheduler.get_apscheduler_all_jobs', return_value=[job]), \
-            patch('database.sql_db.dao.dao_task_center.find_task', return_value=SimpleNamespace(task_id='task-probe')), \
+            patch('database.sql_db.repositories.task_center_repository.find_task', return_value=SimpleNamespace(task_id='task-probe')), \
             patch('common.task_center._task_access'), \
             patch('common.task_center.request_run') as submit:
             result = run_turn('提议运行probe', access('工作台-页面', '任务管理-页面'), client=client)
@@ -353,18 +353,18 @@ class ConversationTests(unittest.TestCase):
 
         from peewee import SqliteDatabase
 
-        from database.sql_db.dao import dao_agent
+        from database.sql_db.repositories import agent_repository
         from database.sql_db.entity.table_agent import AgentAction, AgentConversation, AgentMessage
 
         self.folder = tempfile.TemporaryDirectory()
         self.database = SqliteDatabase(Path(self.folder.name) / 'agent.db')
         self.binding = self.database.bind_ctx([AgentConversation, AgentMessage, AgentAction])
         self.binding.__enter__()
-        self.patcher = patch.object(dao_agent, 'db', return_value=self.database)
+        self.patcher = patch.object(agent_repository, 'db', return_value=self.database)
         self.patcher.start()
-        self.dao = dao_agent
+        self.repository = agent_repository
         for boundary in [
-                patch('database.sql_db.dao.dao_task_center.find_task', return_value=SimpleNamespace(task_id='task-probe')),
+                patch('database.sql_db.repositories.task_center_repository.find_task', return_value=SimpleNamespace(task_id='task-probe')),
                 patch('common.task_center._task_access')]:
             boundary.start()
             self.addCleanup(boundary.stop)
@@ -376,63 +376,63 @@ class ConversationTests(unittest.TestCase):
         self.folder.cleanup()
 
     def test_conversations_are_owned_and_persist_history(self):
-        conversation_id = self.dao.create_conversation('alice')
-        turn_id, history = self.dao.begin_turn('alice', conversation_id, '查询任务')
+        conversation_id = self.repository.create_conversation('alice')
+        turn_id, history = self.repository.begin_turn('alice', conversation_id, '查询任务')
         self.assertEqual(history, [])
-        self.dao.finish_turn('alice', conversation_id, turn_id, '暂无任务', model_name='probe')
-        self.assertEqual([row['role'] for row in self.dao.read_messages('alice', conversation_id)], ['user', 'assistant'])
-        self.assertEqual(self.dao.list_conversations('bob'), [])
+        self.repository.finish_turn('alice', conversation_id, turn_id, '暂无任务', model_name='probe')
+        self.assertEqual([row['role'] for row in self.repository.read_messages('alice', conversation_id)], ['user', 'assistant'])
+        self.assertEqual(self.repository.list_conversations('bob'), [])
         with self.assertRaises(AgentError):
-            self.dao.read_messages('bob', conversation_id)
+            self.repository.read_messages('bob', conversation_id)
         with self.assertRaises(AgentError):
-            self.dao.begin_turn('bob', conversation_id, '越权请求')
+            self.repository.begin_turn('bob', conversation_id, '越权请求')
 
     def test_duplicate_and_stale_turns_are_rejected(self):
-        conversation_id = self.dao.create_conversation('alice')
-        turn_id, _ = self.dao.begin_turn('alice', conversation_id, '查询任务')
+        conversation_id = self.repository.create_conversation('alice')
+        turn_id, _ = self.repository.begin_turn('alice', conversation_id, '查询任务')
         with self.assertRaises(AgentError):
-            self.dao.begin_turn('alice', conversation_id, '重复请求')
+            self.repository.begin_turn('alice', conversation_id, '重复请求')
         with self.assertRaises(AgentError):
-            self.dao.finish_turn('alice', conversation_id, 'invalid', '伪造结果')
-        self.dao.finish_turn('alice', conversation_id, turn_id, '超时', failed=True)
+            self.repository.finish_turn('alice', conversation_id, 'invalid', '伪造结果')
+        self.repository.finish_turn('alice', conversation_id, turn_id, '超时', failed=True)
         with self.assertRaises(AgentError):
-            self.dao.finish_turn('alice', conversation_id, turn_id, '重复结果')
-        _, history = self.dao.begin_turn('alice', conversation_id, '重新查询')
+            self.repository.finish_turn('alice', conversation_id, turn_id, '重复结果')
+        _, history = self.repository.begin_turn('alice', conversation_id, '重新查询')
         self.assertEqual([row['role'] for row in history], ['user'])
 
     def test_saved_content_and_trace_redact_secrets(self):
-        conversation_id = self.dao.create_conversation('alice')
+        conversation_id = self.repository.create_conversation('alice')
         with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'private-probe'}):
-            turn_id, _ = self.dao.begin_turn('alice', conversation_id, 'private-probe')
-            self.dao.finish_turn('alice', conversation_id, turn_id, 'private-probe',
+            turn_id, _ = self.repository.begin_turn('alice', conversation_id, 'private-probe')
+            self.repository.finish_turn('alice', conversation_id, turn_id, 'private-probe',
                                  trace=[{'tool': 'read_latest_log', 'arguments': 'private-probe'}])
-        self.assertNotIn('private-probe', str(self.dao.read_messages('alice', conversation_id)))
+        self.assertNotIn('private-probe', str(self.repository.read_messages('alice', conversation_id)))
 
     def test_latest_log_query_reads_only_requested_job(self):
         from datetime import datetime, timedelta
 
-        from database.sql_db.dao import dao_apscheduler
+        from database.sql_db.repositories import apscheduler_repository
         from database.sql_db.entity.table_apscheduler import SysApschedulerResults
 
         now = datetime.now()
-        with self.database.bind_ctx([SysApschedulerResults]), patch.object(dao_apscheduler, 'db', return_value=self.database):
+        with self.database.bind_ctx([SysApschedulerResults]), patch.object(apscheduler_repository, 'db', return_value=self.database):
             self.database.create_tables([SysApschedulerResults])
             for job_id, started, log in [('probe', now - timedelta(minutes=1), 'old'),
                                          ('probe', now, 'new'), ('other', now, 'private-other')]:
                 SysApschedulerResults.create(job_id=job_id, start_datetime=started, finish_datetime=now,
                                             status='error', log=log)
-            result = dao_apscheduler.get_latest_completed_log('probe')
+            result = apscheduler_repository.get_latest_completed_log('probe')
             self.assertEqual(result['log'], 'new')
             self.assertEqual(result['run_status'], 'error')
             self.assertNotIn('private-other', str(result))
-            self.assertIsNone(dao_apscheduler.get_latest_completed_log('missing'))
+            self.assertIsNone(apscheduler_repository.get_latest_completed_log('missing'))
 
     def test_callback_persists_reply_and_returns_rendered_messages(self):
         from dash_callback.pages import agent_widget_c as workbench_c
         from server import server
 
         menu_access = access('工作台-页面', '任务管理-页面')
-        conversation_id = self.dao.create_conversation(menu_access.user_name)
+        conversation_id = self.repository.create_conversation(menu_access.user_name)
         with server.test_request_context('/'), \
                 patch('common.utilities.util_menu_access.get_menu_access', return_value=menu_access), \
                 patch.object(workbench_c, 'get_menu_access', return_value=menu_access), \
@@ -443,14 +443,14 @@ class ConversationTests(unittest.TestCase):
             result = workbench_c.handle_conversation(conversation_id, 1, conversation_id, '查询任务', False)
         self.assertEqual(result[1], conversation_id)
         self.assertEqual(result[3], '')
-        self.assertEqual(self.dao.read_messages(menu_access.user_name, conversation_id)[-1]['content'], '测试回复')
+        self.assertEqual(self.repository.read_messages(menu_access.user_name, conversation_id)[-1]['content'], '测试回复')
 
     def test_callback_error_recovers_conversation_lease(self):
         from dash_callback.pages import agent_widget_c as workbench_c
         from server import server
 
         menu_access = access('工作台-页面')
-        conversation_id = self.dao.create_conversation(menu_access.user_name)
+        conversation_id = self.repository.create_conversation(menu_access.user_name)
         with server.test_request_context('/'), \
                 patch('common.utilities.util_menu_access.get_menu_access', return_value=menu_access), \
                 patch.object(workbench_c, 'get_menu_access', return_value=menu_access), \
@@ -459,41 +459,41 @@ class ConversationTests(unittest.TestCase):
                 patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe'}):
             result = workbench_c.handle_conversation(conversation_id, 1, conversation_id, '查询任务', False)
         self.assertEqual(result[-1], '模型超时')
-        self.assertEqual(self.dao.read_messages(menu_access.user_name, conversation_id)[-1]['role'], 'error')
-        self.dao.begin_turn(menu_access.user_name, conversation_id, '重试查询')
+        self.assertEqual(self.repository.read_messages(menu_access.user_name, conversation_id)[-1]['role'], 'error')
+        self.repository.begin_turn(menu_access.user_name, conversation_id, '重试查询')
 
     def test_action_is_owned_and_can_only_be_decided_once(self):
-        conversation_id = self.dao.create_conversation('alice')
-        action_id = self.dao.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
+        conversation_id = self.repository.create_conversation('alice')
+        action_id = self.repository.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
         with self.assertRaises(AgentError):
-            self.dao.decide_action('bob', conversation_id, action_id, True)
-        action = self.dao.decide_action('alice', conversation_id, action_id, True)
+            self.repository.decide_action('bob', conversation_id, action_id, True)
+        action = self.repository.decide_action('alice', conversation_id, action_id, True)
         self.assertEqual(action['status'], 'submitting')
         self.assertEqual(action['run_id'], f'agent_run_{action_id}')
         with self.assertRaises(AgentError):
-            self.dao.decide_action('alice', conversation_id, action_id, True)
-        self.dao.finish_action('alice', conversation_id, action_id, 'unknown', '请求超时，禁止自动重试')
-        self.assertEqual(self.dao.read_actions('alice', conversation_id)[0]['status'], 'unknown')
+            self.repository.decide_action('alice', conversation_id, action_id, True)
+        self.repository.finish_action('alice', conversation_id, action_id, 'unknown', '请求超时，禁止自动重试')
+        self.assertEqual(self.repository.read_actions('alice', conversation_id)[0]['status'], 'unknown')
         with self.assertRaises(AgentError):
-            self.dao.finish_action('alice', conversation_id, action_id, 'submitted', '重放结果')
+            self.repository.finish_action('alice', conversation_id, action_id, 'submitted', '重放结果')
 
     def test_rejected_and_expired_actions_cannot_execute(self):
         from datetime import datetime, timedelta
 
         from database.sql_db.entity.table_agent import AgentAction
 
-        conversation_id = self.dao.create_conversation('alice')
-        rejected = self.dao.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
-        self.dao.decide_action('alice', conversation_id, rejected, False)
+        conversation_id = self.repository.create_conversation('alice')
+        rejected = self.repository.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
+        self.repository.decide_action('alice', conversation_id, rejected, False)
         with self.assertRaises(AgentError):
-            self.dao.decide_action('alice', conversation_id, rejected, True)
-        expired = self.dao.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
+            self.repository.decide_action('alice', conversation_id, rejected, True)
+        expired = self.repository.create_action('alice', conversation_id, 'probe', 'a' * 64, '运行已有任务')
         with self.database.connection_context():
             AgentAction.update(expires_at=datetime.now() - timedelta(seconds=1)).where(
                 AgentAction.action_id == expired).execute()
         with self.assertRaises(AgentError):
-            self.dao.decide_action('alice', conversation_id, expired, True)
-        self.assertEqual({row['status'] for row in self.dao.read_actions('alice', conversation_id)},
+            self.repository.decide_action('alice', conversation_id, expired, True)
+        self.assertEqual({row['status'] for row in self.repository.read_actions('alice', conversation_id)},
                          {'rejected', 'expired'})
 
     def test_approval_submits_once_and_never_exports_script_to_model(self):
@@ -502,7 +502,7 @@ class ConversationTests(unittest.TestCase):
         menu_access = access('工作台-页面', '任务管理-页面')
         job = SimpleNamespace(job_id='probe', status=True, type='local', script_text='private-script',
                               script_type='Python', timeout=30, extract_names=None, notify_channels=[])
-        conversation_id = self.dao.create_conversation(menu_access.user_name)
+        conversation_id = self.repository.create_conversation(menu_access.user_name)
         with patch.dict(os.environ, {'SMART_AGENT_RUN_ALLOWLIST': '["probe"]'}), \
                 patch('common.utilities.util_apscheduler.get_apscheduler_all_jobs', return_value=[job]), \
                 patch('common.task_center.request_run') as submit:
@@ -511,9 +511,9 @@ class ConversationTests(unittest.TestCase):
             proposal = execute_tool('propose_run_task', {'job_id': 'probe'}, menu_access)['proposal']
             self.assertNotIn('private-script', str(proposal))
             submit.assert_not_called()
-            turn_id, _ = self.dao.begin_turn(menu_access.user_name, conversation_id, '运行probe')
-            self.dao.finish_turn(menu_access.user_name, conversation_id, turn_id, '等待审批', proposals=[proposal])
-            action_id = self.dao.read_actions(menu_access.user_name, conversation_id)[0]['action_id']
+            turn_id, _ = self.repository.begin_turn(menu_access.user_name, conversation_id, '运行probe')
+            self.repository.finish_turn(menu_access.user_name, conversation_id, turn_id, '等待审批', proposals=[proposal])
+            action_id = self.repository.read_actions(menu_access.user_name, conversation_id)[0]['action_id']
             result = decide_task(menu_access.user_name, conversation_id, action_id, True, lambda: menu_access)
             self.assertEqual(result['status'], 'submitted')
             self.assertEqual(submit.call_args.args[1], 'task-probe')
@@ -529,7 +529,7 @@ class ConversationTests(unittest.TestCase):
         menu_access = access('工作台-页面', '任务管理-页面')
         job = SimpleNamespace(job_id='probe', status=True, type='local', script_text='initial',
                               script_type='Python', timeout=30, extract_names=None, notify_channels=[])
-        conversation_id = self.dao.create_conversation(menu_access.user_name)
+        conversation_id = self.repository.create_conversation(menu_access.user_name)
         with patch.dict(os.environ, {'SMART_AGENT_RUN_ALLOWLIST': '["probe"]'}), \
                 patch('common.utilities.util_apscheduler.get_apscheduler_all_jobs', return_value=[job]), \
                 patch('common.task_center.request_run') as submit:
@@ -537,7 +537,7 @@ class ConversationTests(unittest.TestCase):
                 with self.subTest(reason=reason):
                     submit.reset_mock()
                     proposal = propose_task('probe', menu_access)
-                    action_id = self.dao.create_action(menu_access.user_name, conversation_id, **proposal)
+                    action_id = self.repository.create_action(menu_access.user_name, conversation_id, **proposal)
                     provider = Mock(side_effect=[menu_access, access('工作台-页面')]) if reason == 'revoked' else lambda: menu_access
                     if reason == 'changed':
                         job.script_text = 'changed'
@@ -567,7 +567,7 @@ class ConversationTests(unittest.TestCase):
         from server import server
 
         menu_access = access('工作台-页面', '任务管理-页面')
-        conversation_id = self.dao.create_conversation(menu_access.user_name)
+        conversation_id = self.repository.create_conversation(menu_access.user_name)
         job = SimpleNamespace(job_id='probe', status=True, type='local', script_text='private-script',
                               script_type='Python', timeout=30, extract_names=None, notify_channels=[])
         with patch.dict(os.environ, {'SMART_AGENT_RUN_ALLOWLIST': '["probe"]'}), \
@@ -575,7 +575,7 @@ class ConversationTests(unittest.TestCase):
                 patch('common.task_center.request_run') as submit:
             submit.side_effect = lambda *arguments, **options: dict(
                 status='submitted', run_id=options['run_id'], message='已接收运行请求')
-            action_id = self.dao.create_action(menu_access.user_name, conversation_id, **propose_task('probe', menu_access))
+            action_id = self.repository.create_action(menu_access.user_name, conversation_id, **propose_task('probe', menu_access))
             consent_id = {'type': 'agent-action-consent', 'action_id': action_id}
             with server.test_request_context('/'), \
                     patch('common.utilities.util_menu_access.get_menu_access', return_value=menu_access), \

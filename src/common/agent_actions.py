@@ -33,9 +33,9 @@ def _task(job_id, menu_access):
     if job is None or job.type != 'local' or job.status is not True:
         raise AgentError('任务不存在、已暂停或不是本地任务。')
     from common import task_center
-    from database.sql_db.dao import dao_task_center
+    from database.sql_db.repositories import task_center_repository
     try:
-        task_center._task_access(menu_access, dao_task_center.find_task('platform', job_id), 'run')
+        task_center._task_access(menu_access, task_center_repository.find_task('platform', job_id), 'run')
     except Exception as error:
         raise AgentError('任务未认领或团队未授予运行权限。') from error
     payload = {'script_text': job.script_text, 'script_type': job.script_type, 'timeout': job.timeout,
@@ -52,14 +52,14 @@ def propose_task(job_id, menu_access):
 
 
 def decide_task(owner, conversation_id, action_id, approve, access_provider):
-    from database.sql_db.dao import dao_agent
+    from database.sql_db.repositories import agent_repository
 
     access = access_provider()
     if access.user_name != owner or not access.has_access('工作台-页面'):
         raise AgentError('访问权限已变更，请重新登录。')
     if approve and not can_propose(access):
         raise AgentError('没有任务运行授权，未提交运行请求。')
-    action = dao_agent.decide_action(owner, conversation_id, action_id, approve)
+    action = agent_repository.decide_action(owner, conversation_id, action_id, approve)
     if not approve:
         return {'status': 'rejected', 'message': '已拒绝，未提交任务。'}
     try:
@@ -70,17 +70,17 @@ def decide_task(owner, conversation_id, action_id, approve, access_provider):
         if access.user_name != owner or not can_propose(access) or action['job_id'] not in run_allowlist():
             raise AgentError('访问权限或运行白名单已变更，未提交运行请求。')
     except AgentError as error:
-        dao_agent.finish_action(owner, conversation_id, action_id, 'blocked', str(error))
+        agent_repository.finish_action(owner, conversation_id, action_id, 'blocked', str(error))
         return {'status': 'blocked', 'message': str(error)}
     except Exception:
         message = '任务校验失败，未提交运行请求。'
-        dao_agent.finish_action(owner, conversation_id, action_id, 'blocked', message)
+        agent_repository.finish_action(owner, conversation_id, action_id, 'blocked', message)
         return {'status': 'blocked', 'message': message}
     canonical_run_id = hashlib.sha256(action['run_id'].encode('utf-8')).hexdigest()[:32]
     try:
         from common import task_center
-        from database.sql_db.dao import dao_task_center
-        task = dao_task_center.find_task('platform', action['job_id'])
+        from database.sql_db.repositories import task_center_repository
+        task = task_center_repository.find_task('platform', action['job_id'])
         result = task_center.request_run(access, task.task_id, action['run_id'], source='agent',
                                           run_id=canonical_run_id)
         if result.get('run_id') != canonical_run_id:
@@ -92,5 +92,5 @@ def decide_task(owner, conversation_id, action_id, approve, access_provider):
         status = 'submitted' if result['status'] in {
             'submitted', 'running', 'succeeded', 'failed', 'timeout', 'cancelled'} else 'unknown'
         message = f"{result['message']} 运行 ID：{result['run_id']}"
-    dao_agent.finish_action(owner, conversation_id, action_id, status, message)
+    agent_repository.finish_action(owner, conversation_id, action_id, status, message)
     return {'status': status, 'message': message}

@@ -42,7 +42,7 @@ def require_oauth(required_scope):
 
 
 def current_token():
-    from database.sql_db.dao.dao_oauth2 import exist_token
+    from database.sql_db.repositories.oauth2_repository import exist_token
 
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Bearer '):

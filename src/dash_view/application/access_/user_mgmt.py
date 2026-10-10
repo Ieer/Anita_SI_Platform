@@ -2,7 +2,7 @@ from common.utilities.util_menu_access import MenuAccess
 import feffery_antd_components as fac
 from common.utilities.util_logger import Log
 from dash_components import Card, Table
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from config.enums import Sex
 from dash_callback.application.access_ import user_mgmt_c  # noqa
 from i18n import t__access, t__default

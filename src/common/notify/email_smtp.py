@@ -4,7 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List
 from email.header import Header
-from config.dashgo_conf import ShowConf
+from config.anita_go_conf import ShowConf
 
 
 def send_mail(host: str, port: str, user: str, password: str, receivers: List[str], title: str, content: str):

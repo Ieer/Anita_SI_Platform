@@ -2,7 +2,7 @@ from common.utilities.util_menu_access import MenuAccess
 import feffery_antd_components as fac
 from common.utilities.util_logger import Log
 from dash_components import Card, Table
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from dash_callback.application.access_ import group_mgmt_c  # noqa
 from i18n import t__access, t__default
 
@@ -67,7 +67,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
                                         },
                                     ],
                                 }
-                                for i in dao_user.get_group_info(exclude_disabled=False)
+                                for i in user_repository.get_group_info(exclude_disabled=False)
                             ],
                             pageSize=10,
                         ),

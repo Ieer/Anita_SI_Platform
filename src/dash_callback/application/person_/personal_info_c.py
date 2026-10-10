@@ -3,7 +3,7 @@ from server import app
 from common.utilities.util_file_trans import AvatarFile
 from dash_components import MessageManager
 from dash import set_props
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 import dash
 from common.utilities.util_menu_access import get_menu_access
 from uuid import uuid4
@@ -94,26 +94,26 @@ def _register_profile_field(field_id, update_user, success_text, failure_text, s
 
 _register_profile_field(
     'personal-info-user-full-name',
-    lambda user_name, value: dao_user.update_user_full_name(user_name=user_name, user_full_name=value),
+    lambda user_name, value: user_repository.update_user_full_name(user_name=user_name, user_full_name=value),
     '用户全名更新成功',
     '用户全名更新失败',
     sync_display_name=True,
 )
 _register_profile_field(
     'personal-info-user-email',
-    lambda user_name, value: dao_user.update_user_email(user_name=user_name, user_email=value),
+    lambda user_name, value: user_repository.update_user_email(user_name=user_name, user_email=value),
     '用户邮箱更新成功',
     '用户邮箱更新失败',
 )
 _register_profile_field(
     'personal-info-phone-number',
-    lambda user_name, value: dao_user.update_phone_number(user_name=user_name, phone_number=value),
+    lambda user_name, value: user_repository.update_phone_number(user_name=user_name, phone_number=value),
     '用户电话更新成功',
     '用户电话更新失败',
 )
 _register_profile_field(
     'personal-info-user-remark',
-    lambda user_name, value: dao_user.update_user_remark(user_name=user_name, user_remark=value),
+    lambda user_name, value: user_repository.update_user_remark(user_name=user_name, user_remark=value),
     '用户描述更新成功',
     '用户描述更新失败',
 )
@@ -125,7 +125,7 @@ _register_profile_field(
     prevent_initial_call=True,
 )
 def update_user_sex(value, default_value):
-    if dao_user.update_user_sex(user_name=get_menu_access(only_get_user_name=True), user_sex=value):
+    if user_repository.update_user_sex(user_name=get_menu_access(only_get_user_name=True), user_sex=value):
         MessageManager.success(content=t__person('用户性别更新成功'))
     else:
         set_props('personal-info-user-sex', {'value': default_value})
@@ -160,7 +160,7 @@ def update_password(okCounts, old_password, new_password, new_password_again):
     if new_password != new_password_again:
         MessageManager.warning(content=t__person('密码不一致，请重新填写'))
         return
-    if dao_user.update_user_password(user_name=get_menu_access(only_get_user_name=True), new_password=new_password, old_password=old_password):
+    if user_repository.update_user_password(user_name=get_menu_access(only_get_user_name=True), new_password=new_password, old_password=old_password):
         MessageManager.success(content=t__person('用户密码更新成功'))
     else:
         MessageManager.warning(content=t__person('用户密码验证错误'))
@@ -191,14 +191,14 @@ def gen_otp_rqcode(_, password):
     from otpauth import TOTP
     import feffery_antd_components as fac
     import feffery_utils_components as fuc
-    from config.dashgo_conf import ShowConf
+    from config.anita_go_conf import ShowConf
 
     user_name = get_menu_access(only_get_user_name=True)
 
     if not password:
         MessageManager.warning(content=t__person('请填写密码'))
         return dash.no_update
-    ret = dao_user.gen_otp_qrcode(user_name=user_name, password=password)
+    ret = user_repository.gen_otp_qrcode(user_name=user_name, password=password)
     if not ret:
         MessageManager.warning(content=t__person('密码校验错误'))
         return dash.no_update

@@ -56,7 +56,7 @@ def resolve_scheduler_mode(cli_mode, config_path=None):
 
 def _connect_scheduler_status(timeout):
     from common.utilities.util_scheduler_rpc import connect_scheduler_rpc
-    from config.dashgo_conf import ApSchedulerConf
+    from config.anita_go_conf import ApSchedulerConf
 
     connection = connect_scheduler_rpc(ApSchedulerConf.HOST, ApSchedulerConf.PORT, timeout=timeout)
     try:
@@ -66,7 +66,7 @@ def _connect_scheduler_status(timeout):
 
 
 def _scheduler_port_is_open():
-    from config.dashgo_conf import ApSchedulerConf
+    from config.anita_go_conf import ApSchedulerConf
 
     try:
         with socket.create_connection((ApSchedulerConf.HOST, ApSchedulerConf.PORT), timeout=0.5):
@@ -348,7 +348,7 @@ def main():
 
     def _connect_scheduler_status(timeout):
         from common.utilities.util_scheduler_rpc import connect_scheduler_rpc
-        from config.dashgo_conf import ApSchedulerConf
+        from config.anita_go_conf import ApSchedulerConf
 
         connection = connect_scheduler_rpc(ApSchedulerConf.HOST, ApSchedulerConf.PORT, timeout=timeout)
         try:
@@ -358,7 +358,7 @@ def main():
 
 
     def _scheduler_port_is_open():
-        from config.dashgo_conf import ApSchedulerConf
+        from config.anita_go_conf import ApSchedulerConf
 
         try:
             with socket.create_connection((ApSchedulerConf.HOST, ApSchedulerConf.PORT), timeout=0.5):
@@ -386,7 +386,7 @@ def main():
 
 
     def _wait_for_scheduler(process, expected_state, timeout):
-        from config.dashgo_conf import ApSchedulerConf
+        from config.anita_go_conf import ApSchedulerConf
 
         deadline = time.monotonic() + timeout
         last_error = None
@@ -467,7 +467,7 @@ def main():
         try:
             if scheduler_mode != "web_only":
                 from common.utilities.util_scheduler_rpc import SchedulerRPCAuthenticator
-                from config.dashgo_conf import ApSchedulerConf
+                from config.anita_go_conf import ApSchedulerConf
 
                 SchedulerRPCAuthenticator()
                 if _scheduler_port_is_open():

@@ -1,6 +1,6 @@
 import feffery_antd_components as fac
 from dash import html
-from config.dashgo_conf import ShowConf
+from config.anita_go_conf import ShowConf
 from common.utilities.util_menu_access import MenuAccess
 
 

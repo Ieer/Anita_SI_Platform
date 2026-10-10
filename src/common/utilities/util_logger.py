@@ -1,6 +1,6 @@
 import logging
 from concurrent_log_handler import ConcurrentRotatingFileHandler
-from config.dashgo_conf import LogConf
+from config.anita_go_conf import LogConf
 # logging.error("An error occurred: %s", e, exc_info=True)
 
 

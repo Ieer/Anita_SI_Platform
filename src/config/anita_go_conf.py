@@ -4,9 +4,18 @@ from typing import List
 import platform
 
 
+def resolve_config_file_path(config_dir: Path) -> Path:
+    config_dir = Path(config_dir)
+    current_config = config_dir / 'anita_go.ini'
+    legacy_config = config_dir / 'dashgo.ini'
+    if current_config.is_file() or not legacy_config.is_file():
+        return current_config
+    return legacy_config
+
+
 class PathProj:
     ROOT_PATH = Path(__file__).parent.parent
-    CONF_FILE_PATH = ROOT_PATH / 'config' / 'dashgo.ini'
+    CONF_FILE_PATH = resolve_config_file_path(ROOT_PATH / 'config')
     AVATAR_DIR_PATH = (ROOT_PATH / '..' / 'user_data' / 'avatars').resolve()
     AVATAR_DIR_PATH.mkdir(parents=True, exist_ok=True)
 
@@ -104,4 +113,3 @@ class SqlDbConf(metaclass=BaseMetaConf):
 
 class ListenTaskConf(metaclass=BaseMetaConf):
     PERIOD_MINTUES: int
-

@@ -11,7 +11,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from database.sql_db.conn import db
-from database.sql_db.dao import dao_task_center
+from database.sql_db.repositories import task_center_repository
 from database.sql_db.entity.table_user import SysGroup, SysGroupUser, SysRole, SysUser, SysUserRole
 
 
@@ -95,7 +95,7 @@ def _require_group(access, group_name, operation):
         return username
     if not any(group.group_name == group_name for group in _groups(username)):
         raise TaskCenterError('团队不存在或无权访问。')
-    if operation not in dao_task_center.get_grant(group_name, username):
+    if operation not in task_center_repository.get_grant(group_name, username):
         raise TaskCenterError('团队未授予此操作。')
     return username
 
@@ -116,7 +116,7 @@ def _run_access(access, run, operation):
         return username
     if not any(group.group_name == run.group_name for group in _groups(username)):
         raise TaskCenterError('运行不存在或无权访问。')
-    if operation not in dao_task_center.get_grant(run.group_name, username):
+    if operation not in task_center_repository.get_grant(run.group_name, username):
         raise TaskCenterError('团队未授予此操作。')
     return username
 
@@ -142,8 +142,8 @@ def _platform_job_rows():
         rows = json.loads(connection.root.get_jobs())
     finally:
         connection.close()
-    from database.sql_db.dao import dao_listen_task
-    for listener in dao_listen_task.get_activa_listen_job():
+    from database.sql_db.repositories import listen_task_repository
+    for listener in listen_task_repository.get_activa_listen_job():
         payload = {key: getattr(listener, key, None) for key in
                    ['type', 'script_text', 'script_type', 'timeout', 'host', 'port', 'username',
                     'password', 'extract_names', 'notify_channels']}
@@ -192,7 +192,7 @@ def _task_row(task, backend=None, last_status=''):
 
 
 def _last_status(task_id):
-    rows, _ = dao_task_center.list_runs(task_ids=[task_id], page=1, page_size=1)
+    rows, _ = task_center_repository.list_runs(task_ids=[task_id], page=1, page_size=1)
     return rows[0].status if rows else ''
 
 
@@ -207,7 +207,7 @@ def list_tasks(access, engine='platform', keyword='', status='', page=1, page_si
     username = _user(access)
     admin = _is_admin(username)
     if task_id:
-        task = dao_task_center.get_task(task_id)
+        task = task_center_repository.get_task(task_id)
         _task_access(access, task, 'view')
         if task.engine != engine:
             raise TaskCenterError('任务引擎不匹配。')
@@ -231,19 +231,19 @@ def list_tasks(access, engine='platform', keyword='', status='', page=1, page_si
         backend_rows, online, error = [], False, type(exc).__name__
     if not online:
         group_names = None if admin else [group.group_name for group in _groups(username)
-                                         if 'view' in dao_task_center.get_grant(group.group_name, username)]
+                                         if 'view' in task_center_repository.get_grant(group.group_name, username)]
         if team:
             group_names = [team] if admin or team in (group_names or []) else []
         if task_type:
             return {'rows': [], 'total': 0, 'online': False, 'error': error}
-        tasks, count = dao_task_center.list_tasks(group_names=group_names, engine=engine,
+        tasks, count = task_center_repository.list_tasks(group_names=group_names, engine=engine,
                                                   keyword=keyword, status=status, page=page,
                                                   page_size=page_size)
         return {'rows': [_task_row(task) for task in tasks], 'total': count, 'online': False, 'error': error}
     result = []
-    mappings = dao_task_center.engine_snapshot('platform')
+    mappings = task_center_repository.engine_snapshot('platform')
     allowed_groups = {group.group_name for group in _groups(username)
-                      if 'view' in dao_task_center.get_grant(group.group_name, username)} if not admin else None
+                      if 'view' in task_center_repository.get_grant(group.group_name, username)} if not admin else None
     active_groups = {row['value'] for row in list_teams(access)} if admin else set()
     for backend in backend_rows:
         task = mappings.get(backend.get('id', ''))
@@ -266,7 +266,7 @@ def list_tasks(access, engine='platform', keyword='', status='', page=1, page_si
         result.append(row)
     result.sort(key=lambda row: (row['group_name'], row['name'].casefold()))
     page_rows = _filter_page(result, len(result), page, page_size)[0]
-    statuses = dao_task_center.latest_statuses([row['task_id'] for row in page_rows if row['task_id']])
+    statuses = task_center_repository.latest_statuses([row['task_id'] for row in page_rows if row['task_id']])
     for row in page_rows:
         row['last_status'] = statuses.get(row['task_id'], '')
     return {'rows': page_rows,
@@ -279,7 +279,7 @@ def _list_windows(access, backend_rows, online, error, keyword, status, page, pa
     result = []
     for backend in backend_rows:
         ref = backend.get('TaskName', '')
-        task = dao_task_center.find_task('windows', ref)
+        task = task_center_repository.find_task('windows', ref)
         if task and task.claimed:
             try:
                 _task_access(access, task, 'view')
@@ -324,7 +324,7 @@ def export_windows(access, keyword='', status=''):
         if not result['online']:
             raise TaskCenterError('Windows服务不可用，未生成导出。')
         for row in result['rows']:
-            task = dao_task_center.get_task(row['task_id']) if row['task_id'] else None
+            task = task_center_repository.get_task(row['task_id']) if row['task_id'] else None
             if task is None:
                 continue
             try:
@@ -341,7 +341,7 @@ def export_windows(access, keyword='', status=''):
         page += 1
     if result['total'] > 10_000:
         raise TaskCenterError('导出超过10000条，请先缩小筛选范围。')
-    dao_task_center.audit(username, 'export_windows', 'engine', 'windows', result='ok', reason=f'rows={exported}')
+    task_center_repository.audit(username, 'export_windows', 'engine', 'windows', result='ok', reason=f'rows={exported}')
     return '\ufeff' + output.getvalue()
 
 
@@ -351,16 +351,16 @@ def list_runs(access, task_id=None, keyword='', status='', page=1, page_size=20,
     admin = _is_admin(username)
     group_names = None if admin else [
         group.group_name for group in _groups(username)
-        if 'view' in dao_task_center.get_grant(group.group_name, username)]
+        if 'view' in task_center_repository.get_grant(group.group_name, username)]
     task_ids = None
     if task_id:
-        task = dao_task_center.get_task(task_id)
+        task = task_center_repository.get_task(task_id)
         _task_access(access, task, 'view')
         task_ids = [task_id]
     elif not admin:
         if not group_names:
             return {'rows': [], 'total': 0}
-    rows, total = dao_task_center.list_runs(task_ids=task_ids, group_names=group_names,
+    rows, total = task_center_repository.list_runs(task_ids=task_ids, group_names=group_names,
                                              keyword=keyword, status=status,
                                              page=page, page_size=page_size, run_id=run_id, since=since)
     return {'rows': [
@@ -380,7 +380,7 @@ def claim_task(access, job_id, group_name, engine='platform'):
             job = next((item for item in get_apscheduler_all_jobs() if item.job_id == job_id), None)
             if job is None:
                 raise TaskCenterError('任务不存在。')
-            mapping = dao_task_center.find_task(engine, job_id)
+            mapping = task_center_repository.find_task(engine, job_id)
             if mapping is None or not mapping.claimed:
                 start_stop_job(job_id, False, job.trigger)
             digest = _digest(_payload(next(row for row in _platform_job_rows() if row.get('id') == job_id)))
@@ -395,11 +395,11 @@ def claim_task(access, job_id, group_name, engine='platform'):
         row = next((item for item in manager.get_scheduled_tasks() if item.get('TaskName') == job_id), None)
         if row is None:
             raise TaskCenterError('Windows任务不存在。')
-        mapping = dao_task_center.find_task(engine, job_id)
+        mapping = task_center_repository.find_task(engine, job_id)
         digest, enabled = '', row.get('Status') in {'Ready', 'Running'}
     else:
         raise TaskCenterError('不支持的任务引擎。')
-    task = dao_task_center.claim_task(uuid4().hex, engine, job_id, group_name, digest, enabled,
+    task = task_center_repository.claim_task(uuid4().hex, engine, job_id, group_name, digest, enabled,
                                      username, include_legacy=_is_admin(username))
     return task.task_id
 
@@ -407,7 +407,7 @@ def claim_task(access, job_id, group_name, engine='platform'):
 def get_task(access, task_id, operation='view'):
     if operation not in ALLOWED_OPERATIONS:
         raise TaskCenterError('任务操作无效。')
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     _task_access(access, task, operation)
     try:
         if task.engine == 'platform':
@@ -423,9 +423,9 @@ def get_task(access, task_id, operation='view'):
 
 
 def task_capabilities(access, task_id):
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     username = _task_access(access, task, 'view')
-    operations = set(ALLOWED_OPERATIONS) if _is_admin(username) else dao_task_center.get_grant(task.group_name, username)
+    operations = set(ALLOWED_OPERATIONS) if _is_admin(username) else task_center_repository.get_grant(task.group_name, username)
     if not access.has_access('任务日志-页面'):
         operations -= {'logs', 'export'}
     if not (access.has_access(PAGE_PERMISSION) or access.has_access('Windows任務管理-页面')):
@@ -440,7 +440,7 @@ def task_capabilities(access, task_id):
 
 
 def get_edit_values(access, task_id):
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     _task_access(access, task, 'edit')
     if task.engine != 'platform':
         raise TaskCenterError('Windows任务定义由原生计划程序维护。')
@@ -459,7 +459,7 @@ def get_edit_values(access, task_id):
 
 
 def run_capabilities(access, run_id):
-    run = dao_task_center.get_run(run_id)
+    run = task_center_repository.get_run(run_id)
     operations = set()
     for operation in {'logs', 'export', 'resolve'}:
         try:
@@ -473,7 +473,7 @@ def run_capabilities(access, run_id):
 
 def request_run(access, task_id, request_key, source='manual', expected_digest=None, run_id=None):
     username = _user(access)
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     _task_access(access, task, 'run')
     if not isinstance(request_key, str) or not request_key or len(request_key) > 191:
         raise TaskCenterError('运行请求键无效。')
@@ -481,7 +481,7 @@ def request_run(access, task_id, request_key, source='manual', expected_digest=N
         raise TaskCenterError('运行ID无效。')
     if source not in {'manual', 'agent'}:
         raise TaskCenterError('不支持此运行来源。')
-    duplicate = dao_task_center.get_requested_run(task_id, username, request_key)
+    duplicate = task_center_repository.get_requested_run(task_id, username, request_key)
     if duplicate:
         return {'status': duplicate.status, 'run_id': duplicate.run_id,
                 'message': '已返回原运行；同一请求不会重复提交。'}
@@ -494,16 +494,16 @@ def request_run(access, task_id, request_key, source='manual', expected_digest=N
                         if row.get('TaskName') == task.backend_ref), None)
         if not backend or backend.get('Status') not in {'Ready', 'Running'}:
             raise TaskCenterError('Windows任务不存在或已禁用。')
-        run, created = dao_task_center.reserve_run(task_id, run_id or uuid4().hex, request_key,
+        run, created = task_center_repository.reserve_run(task_id, run_id or uuid4().hex, request_key,
                                                    source, username, task.digest, task.backend_ref)
         if not created:
             return {'status': run.status, 'run_id': run.run_id, 'message': '同一请求不会重复提交。'}
         try:
             manager.start_task(task.backend_ref)
         except Exception as exc:
-            dao_task_center.finish_run(run.run_id, 'unknown', type(exc).__name__)
+            task_center_repository.finish_run(run.run_id, 'unknown', type(exc).__name__)
             return {'status': 'unknown', 'run_id': run.run_id, 'message': '原生提交结果未知，请人工核实；不会自动重试。'}
-        dao_task_center.finish_run(run.run_id, 'accepted', 'Windows accepted command; completion not verified')
+        task_center_repository.finish_run(run.run_id, 'accepted', 'Windows accepted command; completion not verified')
         return {'status': 'accepted', 'run_id': run.run_id, 'message': 'Windows已受理启动命令，不代表执行完成。'}
     try:
         backend = next((row for row in _platform_job_rows() if row.get('id') == task.backend_ref), None)
@@ -516,7 +516,7 @@ def request_run(access, task_id, request_key, source='manual', expected_digest=N
     if expected_digest and expected_digest != digest or task.digest and task.digest != digest:
         raise TaskCenterError('任务定义已变化，请刷新后重试。')
     run_id = run_id or uuid4().hex
-    run, created = dao_task_center.reserve_run(task_id, run_id, request_key, source, username, digest,
+    run, created = task_center_repository.reserve_run(task_id, run_id, request_key, source, username, digest,
                                                task.backend_ref)
     if not created:
         return {'status': run.status, 'run_id': run.run_id,
@@ -529,10 +529,10 @@ def request_run(access, task_id, request_key, source='manual', expected_digest=N
                                             job_kwargs, run_id)
         if receipt != run_id:
             raise TaskCenterError('调度器提交回执不匹配。')
-        if not dao_task_center.mark_submitted(run_id):
+        if not task_center_repository.mark_submitted(run_id):
             raise TaskCenterError('运行状态在调度提交期间发生变化。')
     except Exception:
-        dao_task_center.finish_run(run_id, 'unknown', 'scheduler receipt was missing or ambiguous')
+        task_center_repository.finish_run(run_id, 'unknown', 'scheduler receipt was missing or ambiguous')
         return {'status': 'unknown', 'run_id': run_id,
                 'message': '提交结果未知，已锁定任务且不会自动重试。'}
     return {'status': 'submitted', 'run_id': run_id,
@@ -540,10 +540,10 @@ def request_run(access, task_id, request_key, source='manual', expected_digest=N
 
 
 def dispatch_listen(job_id, event_key, env_vars):
-    task = dao_task_center.find_task('platform', job_id)
+    task = task_center_repository.find_task('platform', job_id)
     if task is None or not task.claimed or not task.enabled or not _group_active(task.group_name):
         raise TaskCenterError('监听任务未认领、已暂停或团队已停用。')
-    duplicate = dao_task_center.get_requested_run(task.task_id, 'listener', event_key)
+    duplicate = task_center_repository.get_requested_run(task.task_id, 'listener', event_key)
     if duplicate:
         return {'run_id': duplicate.run_id, 'status': duplicate.status}
     backend = _backend_for(job_id)
@@ -553,7 +553,7 @@ def dispatch_listen(job_id, event_key, env_vars):
     if _digest(payload) != task.digest:
         raise TaskCenterError('监听定义已变化。')
     run_id = hashlib.sha256(event_key.encode('utf-8')).hexdigest()[:32]
-    run, created = dao_task_center.reserve_run(task.task_id, run_id, event_key, 'listen', 'listener', task.digest)
+    run, created = task_center_repository.reserve_run(task.task_id, run_id, event_key, 'listen', 'listener', task.digest)
     if not created:
         return {'run_id': run.run_id, 'status': run.status}
     from common.utilities.util_apscheduler import _add_job
@@ -561,10 +561,10 @@ def dispatch_listen(job_id, event_key, env_vars):
         receipt = _add_job('date', {'run_date': datetime.now().astimezone().isoformat()},
             dict(payload, env_vars=env_vars, task_id=task.task_id, run_id=run_id,
                  source='listen', source_job_id=job_id), run_id)
-        if receipt != run_id or not dao_task_center.mark_submitted(run_id):
+        if receipt != run_id or not task_center_repository.mark_submitted(run_id):
             raise ValueError('listener receipt mismatch')
     except Exception:
-        dao_task_center.finish_run(run_id, 'unknown', 'listener submission outcome was ambiguous')
+        task_center_repository.finish_run(run_id, 'unknown', 'listener submission outcome was ambiguous')
         raise TaskCenterError('监听提交结果未知，禁止自动重试。')
     return {'run_id': run_id, 'status': 'submitted'}
 
@@ -573,7 +573,7 @@ def operate_task(access, task_id, operation, request_key=None):
     _user(access)
     if operation not in {'pause', 'resume', 'delete'}:
         raise TaskCenterError('不支持的任务操作。')
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     action = 'delete' if operation == 'delete' else operation
     username = _task_access(access, task, action)
     if operation == 'delete' and (task.active_run_id or task.guard_state != 'clear'):
@@ -584,10 +584,10 @@ def operate_task(access, task_id, operation, request_key=None):
         raise TaskCenterError('操作请求键无效。')
     from common.utilities import util_apscheduler
     locked = operation in {'resume', 'delete'}
-    if locked and not dao_task_center.begin_definition_update(task_id, task.digest):
+    if locked and not task_center_repository.begin_definition_update(task_id, task.digest):
         raise TaskCenterError('任务状态已变化，请刷新后重试。')
     if operation == 'pause':
-        dao_task_center.set_task_state(task_id, enabled=False, actor=username, action='pause_requested')
+        task_center_repository.set_task_state(task_id, enabled=False, actor=username, action='pause_requested')
     try:
         if task.engine == 'windows':
             from dash_components.windows_tasks_manager import WindowsTasksManager
@@ -595,7 +595,7 @@ def operate_task(access, task_id, operation, request_key=None):
             method = {'pause': manager.pause_task, 'resume': manager.ready_task,
                       'delete': manager.delete_task}[operation]
             method(task.backend_ref)
-            result = dao_task_center.set_task_state(
+            result = task_center_repository.set_task_state(
                 task_id, enabled=operation == 'resume' if operation != 'delete' else None,
                 deleted=True if operation == 'delete' else None, actor=username, action=operation,
                 expected_guard='editing' if locked else 'clear')
@@ -604,20 +604,20 @@ def operate_task(access, task_id, operation, request_key=None):
             if backend is None:
                 raise TaskCenterError('后端任务不存在。')
             util_apscheduler.remove_job(task.backend_ref, backend.get('trigger', 'cron'))
-            result = dao_task_center.set_task_state(task_id, deleted=True, actor=username, action=operation,
+            result = task_center_repository.set_task_state(task_id, deleted=True, actor=username, action=operation,
                                                    expected_guard='editing')
         else:
             job = _backend_for(task.backend_ref)
             if job is None:
                 raise TaskCenterError('后端任务不存在。')
             util_apscheduler.start_stop_job(task.backend_ref, operation == 'resume', job['trigger'])
-            result = dao_task_center.set_task_state(task_id, enabled=operation == 'resume',
+            result = task_center_repository.set_task_state(task_id, enabled=operation == 'resume',
                                                    actor=username, action=operation,
                                                    expected_guard='editing' if locked else 'clear')
     except Exception as exc:
         if locked:
-            dao_task_center.mark_definition_unknown(task_id)
-        dao_task_center.audit(username, operation, 'task', task_id, task.group_name,
+            task_center_repository.mark_definition_unknown(task_id)
+        task_center_repository.audit(username, operation, 'task', task_id, task.group_name,
                               result='error', reason=type(exc).__name__)
         raise TaskCenterError('任务操作失败。') from exc
     return {'status': 'ok', 'task_id': result.task_id, 'enabled': result.enabled,
@@ -625,7 +625,7 @@ def operate_task(access, task_id, operation, request_key=None):
 
 
 def resolve_task_definition(access, task_id, reason):
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     username = _task_access(access, task, 'resolve')
     if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
         raise TaskCenterError('必须提供人工核实依据。')
@@ -636,75 +636,75 @@ def resolve_task_definition(access, task_id, reason):
         rows = WindowsTasksManager().get_scheduled_tasks()
         backend = next((row for row in rows if row.get('TaskName') == task.backend_ref), None)
         if backend is None:
-            dao_task_center.set_task_state(task_id, deleted=True, actor=username,
+            task_center_repository.set_task_state(task_id, deleted=True, actor=username,
                                            action='resolve_deleted_definition', expected_guard='unknown')
             return {'status': 'deleted', 'message': '原生任务已不存在，平台映射已审计关闭。'}
         if backend.get('Status') != 'Disabled':
             raise TaskCenterError('请先在原生计划程序确认任务已禁用，再核实解锁；平台不会自动停用它。')
-        dao_task_center.resolve_definition(task_id, task.digest, username, reason.strip())
+        task_center_repository.resolve_definition(task_id, task.digest, username, reason.strip())
         return {'status': 'paused', 'message': '已核实原生禁用状态，平台映射保持暂停。'}
     backend = _backend_for(task.backend_ref)
     if backend is None:
         rows = _platform_job_rows()
         if any(row.get('id') == task.backend_ref for row in rows):
             raise TaskCenterError('后端定义状态已变化，请刷新。')
-        dao_task_center.set_task_state(task_id, deleted=True, actor=username,
+        task_center_repository.set_task_state(task_id, deleted=True, actor=username,
                                        action='resolve_deleted_definition', expected_guard='unknown')
         return {'status': 'deleted', 'message': '已核实后端定义不存在，平台映射已审计关闭。'}
     from common.utilities.util_apscheduler import start_stop_job
     start_stop_job(task.backend_ref, False, backend['trigger'])
-    dao_task_center.resolve_definition(task_id, _digest(_payload(backend)), username, reason.strip())
+    task_center_repository.resolve_definition(task_id, _digest(_payload(backend)), username, reason.strip())
     return {'status': 'paused', 'message': '已核实定义并保持暂停，请核对计划后显式恢复。'}
 
 
 def transfer_task(access, task_id, destination, reason):
-    task = dao_task_center.get_task(task_id)
+    task = task_center_repository.get_task(task_id)
     username = _task_access(access, task, 'transfer')
     _require_group(access, destination, 'claim')
     if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
         raise TaskCenterError('转移必须提供原因。')
-    dao_task_center.transfer_task(task_id, destination, username, reason.strip())
+    task_center_repository.transfer_task(task_id, destination, username, reason.strip())
     return {'status': 'paused', 'message': '任务归属已转移，历史运行团队快照不变，任务保持暂停。'}
 
 
 def can_manage_grants(access):
     try:
         username = _user(access)
-        return _is_admin(username) or any('grant' in dao_task_center.get_grant(group.group_name, username)
+        return _is_admin(username) or any('grant' in task_center_repository.get_grant(group.group_name, username)
                                          for group in _groups(username))
     except TaskCenterError:
         return False
 
 
 def resolve_run(access, run_id, outcome, reason):
-    run = dao_task_center.get_run(run_id)
+    run = task_center_repository.get_run(run_id)
     username = _run_access(access, run, 'resolve')
-    resolved = dao_task_center.resolve_run(run_id, outcome, reason, username)
+    resolved = task_center_repository.resolve_run(run_id, outcome, reason, username)
     return {'outcome': outcome, 'run_id': resolved.run_id, 'status': resolved.status,
             'message': '运行已人工核实，审计记录已保存。'}
 
 
 def read_log(access, run_id, cursor=0, limit=100):
-    run = dao_task_center.get_run(run_id)
+    run = task_center_repository.get_run(run_id)
     _run_access(access, run, 'logs')
     if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
         raise TaskCenterError('日志游标无效。')
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_PAGE_SIZE:
         raise TaskCenterError(f'日志数量必须在1至{MAX_PAGE_SIZE}之间。')
-    chunks, next_cursor, run = dao_task_center.get_log_chunks(run_id, cursor, limit)
+    chunks, next_cursor, run = task_center_repository.get_log_chunks(run_id, cursor, limit)
     return {'chunks': chunks, 'cursor': next_cursor, 'status': run.status,
             'complete': next_cursor >= run.log_sequence and run.status in {
                 'succeeded', 'failed', 'timeout', 'cancelled', 'ended', 'skipped', 'accepted', 'unknown'}}
 
 
 def export_log(access, run_id):
-    run = dao_task_center.get_run(run_id)
+    run = task_center_repository.get_run(run_id)
     username = _run_access(access, run, 'export')
     chunks = []
     cursor = 0
     size = 0
     while size < MAX_LOG_CHARS:
-        page, next_cursor, _ = dao_task_center.get_log_chunks(run_id, cursor, MAX_PAGE_SIZE)
+        page, next_cursor, _ = task_center_repository.get_log_chunks(run_id, cursor, MAX_PAGE_SIZE)
         if not page:
             break
         for chunk in page:
@@ -719,15 +719,15 @@ def export_log(access, run_id):
     text = ''.join(chunks)
     if size >= MAX_LOG_CHARS:
         text += '\n[EXPORT TRUNCATED: size limit reached; narrow the requested output.]\n'
-    dao_task_center.audit(username, 'export_log', 'run', run_id, run.group_name,
+    task_center_repository.audit(username, 'export_log', 'run', run_id, run.group_name,
                           result='ok', reason=f'chars={len(text)}')
     return text
 
 
 def latest_log(access, job_id):
-    task = dao_task_center.find_task('platform', job_id)
+    task = task_center_repository.find_task('platform', job_id)
     _task_access(access, task, 'logs')
-    rows, _ = dao_task_center.list_runs(task_ids=[task.task_id], page=1, page_size=1,
+    rows, _ = task_center_repository.list_runs(task_ids=[task.task_id], page=1, page_size=1,
                                       statuses=['succeeded', 'failed', 'timeout', 'cancelled', 'ended'])
     run = rows[0] if rows else None
     if run is None:
@@ -745,7 +745,7 @@ def grant_team(access, group_name, user_name, operations):
         raise TaskCenterError('团队操作授权列表无效。')
     if not _is_admin(username):
         _require_group(access, group_name, 'grant')
-        if not set(operations).issubset(dao_task_center.get_grant(group_name, username) - {'grant'}):
+        if not set(operations).issubset(task_center_repository.get_grant(group_name, username) - {'grant'}):
             raise TaskCenterError('团队授权管理员只能委派自身已有的操作，不能提升权限。')
     if not _group_active(group_name):
         raise TaskCenterError('团队不存在或已停用。')
@@ -757,7 +757,7 @@ def grant_team(access, group_name, user_name, operations):
         if not SysGroupUser.select().where((SysGroupUser.group_name == group_name)
                                            & (SysGroupUser.user_name == user_name)).exists():
             raise TaskCenterError('用户不是该团队成员。')
-    dao_task_center.upsert_grant(group_name, user_name, operations, username)
+    task_center_repository.upsert_grant(group_name, user_name, operations, username)
 
 
 def list_teams(access):
@@ -782,10 +782,10 @@ def save_task(access, values, task_id=None):
     engine = values.get('engine', 'platform')
     if engine != 'platform':
         raise TaskCenterError('Windows任务定义由Windows任务计划程序维护。')
-    job_id = values.get('job_id') or (dao_task_center.get_task(task_id).backend_ref if task_id else '')
+    job_id = values.get('job_id') or (task_center_repository.get_task(task_id).backend_ref if task_id else '')
     if not isinstance(job_id, str) or not job_id or len(job_id) > 191:
         raise TaskCenterError('任务ID无效。')
-    existing = dao_task_center.get_task(task_id) if task_id else None
+    existing = task_center_repository.get_task(task_id) if task_id else None
     previous = None
     if task_id:
         _task_access(access, existing, 'edit')
@@ -870,20 +870,20 @@ def save_task(access, values, task_id=None):
     locked = False
     try:
         if existing:
-            locked = dao_task_center.begin_definition_update(task_id, expected, existing.definition_version)
+            locked = task_center_repository.begin_definition_update(task_id, expected, existing.definition_version)
             if not locked:
                 raise TaskCenterError('任务正在运行或定义已变化，请刷新后重试。')
         if trigger == 'listen':
-            from database.sql_db.dao import dao_listen_task
+            from database.sql_db.repositories import listen_task_repository
             listener_values = {key: value for key, value in job_kwargs.items() if key != 'env_vars'}
             for key in ['extract_names', 'notify_channels']:
                 listener_values[key] = json.dumps(listener_values.get(key), ensure_ascii=False)
             listener_values.update(status=False, listen_channels=json.dumps(channels, ensure_ascii=False),
                                    listen_keyword=keyword)
             if existing:
-                dao_listen_task.update_activa_listen_job(job_id, **listener_values)
+                listen_task_repository.update_activa_listen_job(job_id, **listener_values)
             else:
-                dao_listen_task.insert_activa_listen_job(job_id=job_id,
+                listen_task_repository.insert_activa_listen_job(job_id=job_id,
                     update_by=username, update_datetime=now, **listener_values)
             receipt = job_id
         else:
@@ -892,14 +892,14 @@ def save_task(access, values, task_id=None):
         if receipt != job_id:
             raise TaskCenterError('调度器保存回执不匹配。')
         if existing:
-            result = dao_task_center.finish_definition_update(task_id, expected, digest, username)
+            result = task_center_repository.finish_definition_update(task_id, expected, digest, username)
         else:
-            result = dao_task_center.create_task(uuid4().hex, 'platform', job_id, group_name,
+            result = task_center_repository.create_task(uuid4().hex, 'platform', job_id, group_name,
                                                  digest, enabled=False, claimed=True, actor=username)
     except Exception as exc:
         if locked:
-            dao_task_center.mark_definition_unknown(task_id)
-        dao_task_center.audit(username, 'save_task', 'task', job_id, group_name,
+            task_center_repository.mark_definition_unknown(task_id)
+        task_center_repository.audit(username, 'save_task', 'task', job_id, group_name,
                               result='unknown', reason=type(exc).__name__)
         raise TaskCenterError('任务保存结果未知；任务保持暂停，请检查后再操作。') from exc
     return {'task_id': result.task_id, 'job_id': job_id, 'status': 'paused', 'digest': digest}

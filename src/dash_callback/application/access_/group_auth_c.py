@@ -2,7 +2,7 @@ from server import app
 from dash.dependencies import Input, Output
 import dash
 from common.utilities.util_menu_access import get_menu_access
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from dash_components import MessageManager
 from i18n import t__access, t__default
 
@@ -22,13 +22,13 @@ def change_role(recentlySelectRow, recentlySelectDataIndex, recentlySelectValue)
     user_name = recentlySelectRow['user_name']
     if recentlySelectDataIndex != 'user_roles':
         return dash.no_update
-    allowed_rows = dao_user.get_dict_group_name_users_roles(get_menu_access().user_name)
+    allowed_rows = user_repository.get_dict_group_name_users_roles(get_menu_access().user_name)
     allowed = next((row for row in allowed_rows if row['group_name'] == group_name and row['user_name'] == user_name), None)
     if (allowed is None or not isinstance(recentlySelectValue, list)
             or not set(recentlySelectValue).issubset(set(allowed['group_roles']))):
         from dash.exceptions import PreventUpdate
         raise PreventUpdate
-    rt = dao_user.update_user_roles_from_group(user_name, group_name, recentlySelectValue)
+    rt = user_repository.update_user_roles_from_group(user_name, group_name, recentlySelectValue)
     if rt:
         MessageManager.success(content=t__access('权限更新成功'))
         return [
@@ -45,7 +45,7 @@ def change_role(recentlySelectRow, recentlySelectDataIndex, recentlySelectValue)
                     'value': i['user_roles'],
                 },
             }
-            for i in dao_user.get_dict_group_name_users_roles(get_menu_access().user_name)
+            for i in user_repository.get_dict_group_name_users_roles(get_menu_access().user_name)
         ]
     else:
         MessageManager.warning(content=t__access('权限更新失败'))

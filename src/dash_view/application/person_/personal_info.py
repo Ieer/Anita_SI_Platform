@@ -5,7 +5,7 @@ from common.utilities.util_logger import Log
 from dash_view.framework.user_avatar import render_user_avatar
 from dash import html
 from dash import dcc
-from database.sql_db.dao import dao_user
+from database.sql_db.repositories import user_repository
 from config.enums import Sex
 import dash_callback.application.person_.personal_info_c  # noqa
 from i18n import t__person, t__default, t__access
@@ -60,7 +60,7 @@ def _editable_field(label, field_id, value):
 
 
 def render_content(menu_access: MenuAccess, **kwargs):
-    user_info = dao_user.get_user_info([menu_access.user_name], exclude_disabled=True)[0]
+    user_info = user_repository.get_user_info([menu_access.user_name], exclude_disabled=True)[0]
     full_name = user_info.user_full_name or user_info.user_name
     status_text = t__default('启用' if user_info.user_status else '停用')
     return html.Main(

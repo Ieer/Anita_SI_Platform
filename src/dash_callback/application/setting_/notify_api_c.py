@@ -2,7 +2,7 @@ from dash.dependencies import Input, Output, State, MATCH
 from server import app
 import feffery_antd_components as fac
 from dash_components import MessageManager
-from database.sql_db.dao import dao_notify
+from database.sql_db.repositories import notify_repository
 import dash
 from uuid import uuid4
 from dash import dcc
@@ -20,10 +20,10 @@ def api_name_value2label(api_name: str):
 def get_tabs_items():
     items = []
     # server酱配置
-    notify_apis = dao_notify.get_notify_api_by_name(api_name=None)
+    notify_apis = notify_repository.get_notify_api_by_name(api_name=None)
     for notify_api in notify_apis: # type: ignore
         api_type = notify_api.api_type
-        if api_type not in dao_notify.support_api_types:
+        if api_type not in notify_repository.support_api_types:
             raise Exception(f'不支持{api_type}类型的消息推送')
         api_name = notify_api.api_name
         api_name_label = api_name_value2label(api_name)
@@ -274,7 +274,7 @@ def get_tabs_items():
 def get_notify_api():
     api_names = []
     api_names_enabled = []
-    notify_apis = dao_notify.get_notify_api_by_name(api_name=None)
+    notify_apis = notify_repository.get_notify_api_by_name(api_name=None)
     for notify_api in notify_apis:
         api_name = notify_api.api_name
         enable = notify_api.enable
@@ -305,11 +305,11 @@ def add_server_chan_notify_api(nClick, api_name_label):
     if not api_name_label:
         MessageManager.error(content=t__setting('请输入API名称'))
         return dash.no_update
-    for i in dao_notify.get_notify_api_by_name(api_name=None):
+    for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
             MessageManager.error(content=api_name_label + t__setting('已存在'))
             return dash.no_update
-    dao_notify.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Server酱', enable=False, params_json='{}')
+    notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Server酱', enable=False, params_json='{}')
     MessageManager.success(content=api_name_label + t__setting('创建成功'))
     return [get_tabs_items(), *get_notify_api()]
 
@@ -329,11 +329,11 @@ def add_Gewechat_notify_api(nClick, api_name_label):
     if not api_name_label:
         MessageManager.error(content=t__setting('请输入API名称'))
         return dash.no_update
-    for i in dao_notify.get_notify_api_by_name(api_name=None):
+    for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
             MessageManager.error(content=api_name_label + t__setting('已存在'))
             return dash.no_update
-    dao_notify.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Gewechat', enable=False, params_json='{}')
+    notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Gewechat', enable=False, params_json='{}')
     MessageManager.success(content=api_name_label + t__setting('创建成功'))
     return [get_tabs_items(), *get_notify_api()]
 
@@ -353,11 +353,11 @@ def add_wecom_group_robot_notify_api(nClick, api_name_label):
     if not api_name_label:
         MessageManager.error(content=t__setting('请输入API名称'))
         return dash.no_update
-    for i in dao_notify.get_notify_api_by_name(api_name=None):
+    for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
             MessageManager.error(content=api_name_label + t__setting('已存在'))
             return dash.no_update
-    dao_notify.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='企业微信群机器人', enable=False, params_json='{}')
+    notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='企业微信群机器人', enable=False, params_json='{}')
     MessageManager.success(content=api_name_label + t__setting('创建成功'))
     return [get_tabs_items(), *get_notify_api()]
 
@@ -377,11 +377,11 @@ def add_email_smtp_notify_api(nClick, api_name_label):
     if not api_name_label:
         MessageManager.error(content=t__setting('请输入API名称'))
         return dash.no_update
-    for i in dao_notify.get_notify_api_by_name(api_name=None):
+    for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
             MessageManager.error(content=api_name_label + t__setting('已存在'))
             return dash.no_update
-    dao_notify.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件SMTP协议', enable=False, params_json='{}')
+    notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件SMTP协议', enable=False, params_json='{}')
     MessageManager.success(content=api_name_label + t__setting('创建成功'))
     return [get_tabs_items(), *get_notify_api()]
 
@@ -400,9 +400,9 @@ def enable_notify_api(enables, options):
     for option in options:
         api_name = option['value']
         if api_name in enables:
-            dao_notify.modify_enable(api_name=api_name, enable=True)
+            notify_repository.modify_enable(api_name=api_name, enable=True)
         else:
-            dao_notify.modify_enable(api_name=api_name, enable=False)
+            notify_repository.modify_enable(api_name=api_name, enable=False)
     return [get_tabs_items(), *get_notify_api()]
 
 
@@ -427,9 +427,9 @@ def save_server_jiang_api(nClick, SendKey, Noip, Channel, Openid, api_name):
         Openid=Openid,
     )
     api_name_label = api_name_value2label(api_name)
-    is_enabled = dao_notify.get_notify_api_by_name(api_name=api_name).enable
-    dao_notify.delete_notify_api_by_name(api_name=api_name)
-    if dao_notify.insert_notify_api(api_name=api_name, api_type='Server酱', enable=is_enabled, params_json=json.dumps(values)):
+    is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
+    notify_repository.delete_notify_api_by_name(api_name=api_name)
+    if notify_repository.insert_notify_api(api_name=api_name, api_type='Server酱', enable=is_enabled, params_json=json.dumps(values)):
         MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
@@ -516,9 +516,9 @@ def test_Gewechat_api(nClicks, token, app_id, base_url, wxid):
 def save_Gewechat_api(nClick, token, app_id, base_url, wxid, api_name):
     values = dict(token=token, app_id=app_id, base_url=base_url, wxid=wxid)
     api_name_label = api_name_value2label(api_name)
-    is_enabled = dao_notify.get_notify_api_by_name(api_name=api_name).enable
-    dao_notify.delete_notify_api_by_name(api_name=api_name)
-    if dao_notify.insert_notify_api(api_name=api_name, api_type='Gewechat', enable=is_enabled, params_json=json.dumps(values)):
+    is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
+    notify_repository.delete_notify_api_by_name(api_name=api_name)
+    if notify_repository.insert_notify_api(api_name=api_name, api_type='Gewechat', enable=is_enabled, params_json=json.dumps(values)):
         MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
@@ -538,9 +538,9 @@ def save_Gewechat_api(nClick, token, app_id, base_url, wxid, api_name):
 def save_wecom_group_robot_api(nClick, Key, api_name):
     values = dict(Key=Key)
     api_name_label = api_name_value2label(api_name)
-    is_enabled = dao_notify.get_notify_api_by_name(api_name=api_name).enable
-    dao_notify.delete_notify_api_by_name(api_name=api_name)
-    if dao_notify.insert_notify_api(api_name=api_name, api_type='企业微信群机器人', enable=is_enabled, params_json=json.dumps(values)):
+    is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
+    notify_repository.delete_notify_api_by_name(api_name=api_name)
+    if notify_repository.insert_notify_api(api_name=api_name, api_type='企业微信群机器人', enable=is_enabled, params_json=json.dumps(values)):
         MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
@@ -584,9 +584,9 @@ def test_wecom_group_robot_api(nClicks, Key):
 def save_email_smtp_api(nClick, Host, Port, User, Password, Receivers, api_name):
     values = dict(Host=Host, Port=Port, User=User, Password=Password, Receivers=Receivers)
     api_name_label = api_name_value2label(api_name)
-    is_enabled = dao_notify.get_notify_api_by_name(api_name=api_name).enable
-    dao_notify.delete_notify_api_by_name(api_name=api_name)
-    if dao_notify.insert_notify_api(api_name=api_name, api_type='邮件SMTP协议', enable=is_enabled, params_json=json.dumps(values)):
+    is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
+    notify_repository.delete_notify_api_by_name(api_name=api_name)
+    if notify_repository.insert_notify_api(api_name=api_name, api_type='邮件SMTP协议', enable=is_enabled, params_json=json.dumps(values)):
         MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
@@ -636,7 +636,7 @@ def test_email_smtp_api(nClicks, Host, Port, User, Password, Receivers):
 def delete_notify_channel(clickedContextMenu):
     api_name = clickedContextMenu['tabKey']
     api_name_label = api_name_value2label(api_name)
-    if dao_notify.delete_notify_api_by_name(api_name=api_name):
+    if notify_repository.delete_notify_api_by_name(api_name=api_name):
         MessageManager.success(content=api_name_label + t__setting('删除成功'))
     else:
         MessageManager.error(content=api_name_label + t__setting('删除失败'))

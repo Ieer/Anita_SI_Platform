@@ -1,7 +1,7 @@
 from flask import request, redirect, send_from_directory, abort, jsonify, Response
 from common.exception import OAuth2Error
 from common.utilities.util_oauth2 import current_token, require_oauth
-from config.dashgo_conf import ShowConf, FlaskConf, CommonConf, PathProj
+from config.anita_go_conf import ShowConf, FlaskConf, CommonConf, PathProj
 from common.utilities.util_logger import Log
 from common.exception import global_exception_handler
 from common.utilities.util_dash import CustomDash
@@ -148,7 +148,7 @@ def task_log_sse():
 # nginx代理后，拦截直接访问
 @server.before_request
 def ban_bypass_proxy():
-    from config.dashgo_conf import ProxyConf
+    from config.anita_go_conf import ProxyConf
 
     if ProxyConf.NGINX_PROXY and request.headers.get('X-Forwarded-For') is None:
         abort(HttpStatusConstant.FORBIDDEN)
@@ -212,8 +212,8 @@ def authorize():
     from common.utilities.util_jwt import AccessFailType
     from common.utilities.util_authorization import auth_validate
     from common.utilities.util_oauth2 import authorize_html
-    from config.dashgo_conf import OAuth2Conf
-    from database.sql_db.dao.dao_oauth2 import exist_client, insert_authorization_code
+    from config.anita_go_conf import OAuth2Conf
+    from database.sql_db.repositories.oauth2_repository import exist_client, insert_authorization_code
     from yarl import URL
     import secrets
 
@@ -280,9 +280,9 @@ def issue_token():
     - client_id: 客户端ID（必须）
     - client_secret: 客户端密钥（必须）
     """
-    from database.sql_db.dao.dao_oauth2 import exist_code, validate_client, exchange_authorization_code
+    from database.sql_db.repositories.oauth2_repository import exist_code, validate_client, exchange_authorization_code
     import secrets
-    from config.dashgo_conf import OAuth2Conf
+    from config.anita_go_conf import OAuth2Conf
     from common.utilities.util_jwt import jwt_encode
 
     # 验证客户端凭证
@@ -337,7 +337,7 @@ def issue_token():
 @require_oauth('userinfo')
 def userinfo():
     """受保护端点"""
-    from database.sql_db.dao.dao_user import get_user_info
+    from database.sql_db.repositories.user_repository import get_user_info
     from common.utilities.util_menu_access import MenuAccess
     from common.utilities.util_jwt import jwt_decode
 

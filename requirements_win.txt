@@ -9,6 +9,7 @@ user_agents==2.2.0
 yarl==1.16.0
 feffery_dash_utils==0.2.6
 pillow==10.4.0
+pandas==2.2.3
 py-cpuinfo==9.0.0
 cacheout==0.16.0
 peewee==3.17.8

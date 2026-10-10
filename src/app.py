@@ -22,7 +22,7 @@ AccessFactory.check_access_meta()
 # 全局功能组件+全局消息提示+全局通知信息+URL初始化中继组件+根容器
 app.layout = lambda: fac.AntdConfigProvider(fuc.FefferyTopProgress(
     [
-        fuc.FefferySetFavicon(favicon='/assets/logo.ico'),
+        fuc.FefferySetFavicon(favicon='/assets/imgs/digital-human-mark.svg'),
         # 全局url监听组件，仅仅起到监听的作用
         fuc.FefferyLocation(id='global-url-location'),
         # 全局url控制组件

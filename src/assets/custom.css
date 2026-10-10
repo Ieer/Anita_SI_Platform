@@ -94,6 +94,10 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
     .js-plotly-plot { border: 1px solid CanvasText; }
 }
 .platform-shell { --platform-main-inset: 12px; --platform-tabs-height: calc(100dvh - 50px - var(--platform-main-inset)); background: var(--platform-canvas); isolation: isolate; }
+.platform-demo-shell { --platform-tabs-height: calc(100dvh - 88px - var(--platform-main-inset)); }
+.platform-demo-banner { min-height: 30px; margin: 0 0 8px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; color: var(--platform-ink); background: var(--platform-accent-soft); border: 1px solid var(--platform-border); border-radius: 6px; font-size: 12px; box-sizing: border-box; }
+.platform-demo-banner > span:first-of-type { font-weight: 600; white-space: nowrap; }
+.platform-demo-banner > span:last-of-type { color: var(--platform-muted); }
 .platform-sidebar-column { padding: 12px 0 12px 12px; box-sizing: border-box; }
 .platform-content-column { padding: var(--platform-main-inset) 20px 0; height: 100dvh; box-sizing: border-box; }
 #menu-collapse-sider { background: var(--platform-surface); height: calc(100dvh - 24px); border: 1px solid var(--platform-border); border-radius: 8px; box-sizing: border-box; box-shadow: 0 3px 12px #202c3108, 0 1px 2px #202c3105; }
@@ -101,9 +105,12 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
 .platform-nav-backdrop, .platform-navigation-close { display: none; }
 #platform-navigation { height: 100%; display: flex; flex-direction: column; overflow: auto; scrollbar-width: thin; }
 .platform-sidebar-brand { display: flex; align-items: center; gap: 10px; min-height: 72px; padding: 18px 14px; flex-shrink: 0; margin-bottom: 12px; box-sizing: border-box; }
-.platform-brand-mark { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; background: #152324; color: #72e6c9; border-radius: 7px; font-size: 19px; box-shadow: inset 0 0 0 1px #395254; }
-.platform-brand-copy { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
-#logo-text { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.platform-brand-mark { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; background: #152324; border-radius: 7px; box-shadow: inset 0 0 0 1px #395254; overflow: hidden; }
+.platform-brand-image { display: block; width: 32px; height: 32px; object-fit: contain; }
+.platform-brand-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.platform-brand-wordmark { display: block; flex-shrink: 0; max-width: 100%; object-fit: contain; object-position: left center; filter: brightness(.5); }
+html[data-theme-mode="dark"] .platform-brand-wordmark, .platform-login .platform-brand-wordmark { filter: brightness(1.4); }
+#logo-text { font-size: 11px; font-weight: 500; color: var(--platform-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .platform-brand-caption, .platform-nav-caption { font-size: 10px; color: var(--platform-muted); }
 .platform-nav-caption { padding: 12px 20px 6px; }
 .platform-primary-link { display: flex; align-items: center; gap: 10px; min-height: 42px; margin: 0 12px 12px; padding: 10px 12px; color: var(--platform-muted); background: var(--platform-raised); border: 1px solid var(--platform-border); border-radius: 6px; font-size: 13px; font-weight: 500; box-sizing: border-box; }
@@ -131,6 +138,30 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
 .ant-layout-sider-collapsed .platform-sidebar-brand { padding-left: 11px; padding-right: 11px; }
 .ant-layout-sider-collapsed #platform-navigation .ant-menu { padding: 0 6px; }
 
+.platform-template-page { display: grid; gap: 18px; width: 100%; max-width: 1440px; margin: 0 auto; padding: 20px 18px 32px; box-sizing: border-box; color: var(--platform-ink); }
+.platform-template-heading, .platform-template-table-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.platform-template-kicker { color: var(--platform-muted); font-size: 10px; font-weight: 600; }
+.platform-template-title { margin: 4px 0 0; font-size: 22px; line-height: 1.3; overflow-wrap: anywhere; }
+.platform-template-sample-tag { flex: 0 0 auto; padding: 5px 9px; color: var(--platform-accent); background: var(--platform-accent-soft); border: 1px solid var(--platform-border); border-radius: 5px; font-size: 11px; }
+.platform-template-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.platform-template-metric { display: grid; gap: 8px; min-width: 0; padding: 14px; background: var(--platform-surface); border: 1px solid var(--platform-border); border-radius: 6px; }
+.platform-template-metric-label, .platform-template-metric-note { color: var(--platform-muted); font-size: 12px; }
+.platform-template-metric-value { color: var(--platform-ink); font-size: 22px; line-height: 1.2; }
+.platform-template-filters { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto minmax(160px, .7fr) auto; align-items: center; gap: 10px; }
+.platform-template-filters > label { color: var(--platform-muted); font-size: 12px; }
+.platform-template-table-section { min-width: 0; border-top: 1px solid var(--platform-border); }
+.platform-template-table-heading { min-height: 54px; }
+.platform-template-section-title { margin: 0; color: var(--platform-ink); font-size: 15px; }
+.platform-template-table-heading > span:last-child { color: var(--platform-muted); font-size: 12px; }
+@media (max-width: 700px) {
+    .platform-template-page { gap: 14px; padding: 16px 12px 24px; }
+    .platform-template-title { font-size: 20px; }
+    .platform-template-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .platform-template-metric { padding: 11px; }
+    .platform-template-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .platform-template-filters > label { grid-column: span 2; }
+    .platform-template-filters > label:not(:first-child) { margin-top: 4px; }
+}
 .platform-login {
     min-height: 100vh;
     min-height: 100dvh;
@@ -152,6 +183,9 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
 }
 .login-brand { display: flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 600; overflow-wrap: anywhere; }
 .login-brand img { object-fit: contain; }
+.login-brand .platform-brand-mark, .login-brand .platform-brand-image { width: 44px; height: 44px; }
+.login-brand .platform-brand-mark { border-radius: 8px; }
+.login-brand-platform { font-size: 11px; line-height: 16px; font-weight: 500; color: #B8C5CA; }
 .login-layout {
     width: min(1040px, calc(100% - 80px));
     margin: auto;
@@ -600,7 +634,7 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
 #agent-panel[hidden] { display: none; }
 .agent-panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; box-sizing: border-box; min-height: 72px; padding: 14px 16px 12px 20px; background: var(--platform-surface); }
 .agent-panel-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.agent-header-portrait { width: 36px; height: 40px; object-fit: contain; flex-shrink: 0; }
+.agent-header-portrait { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; border-radius: 8px; }
 .agent-header-text { min-width: 0; }
 .agent-panel-header h2 { font-size: 17px; line-height: 24px; font-weight: 650; margin: 0 0 2px; color: var(--agent-ink); }
 .agent-panel-controls { display: flex; gap: 4px; }
@@ -617,18 +651,24 @@ html[data-contrast="high"] :focus-visible { outline: 3px solid var(--platform-ac
 #agent-panel .agent-messages { min-height: 0; max-height: none; overflow: visible; padding: 24px 20px 12px; flex: 1 0 auto; }
 #agent-panel .agent-messages:has(.agent-empty) { display: flex; align-items: center; justify-content: center; padding: 24px; }
 #agent-panel .agent-empty { min-height: 0; padding-bottom: 28px; gap: 16px; }
-.agent-empty-portrait { width: 88px; height: 90px; object-fit: contain; }
+.agent-empty-portrait { width: 88px; height: 88px; object-fit: contain; border-radius: 18px; }
 #agent-panel .agent-empty h2 { font-size: 19px; line-height: 28px; font-weight: 500; color: var(--platform-muted); margin: 0; }
 #agent-panel .agent-message { margin: 0 0 24px; padding: 0; border: 0; min-width: 0; }
 #agent-panel .agent-message:last-child { margin-bottom: 8px; }
-#agent-panel .agent-message-meta { justify-content: flex-start; align-items: center; gap: 8px; font-size: 11px; line-height: 18px; margin-bottom: 8px; color: var(--platform-muted); }
+#agent-panel .agent-message-meta { display: flex; justify-content: flex-start; align-items: center; gap: 8px; min-height: 28px; font-size: 11px; line-height: 18px; margin-bottom: 8px; color: var(--platform-muted); }
+#agent-panel .agent-message-avatar { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid var(--platform-border); border-radius: 7px; box-sizing: border-box; }
+#agent-panel .agent-message-avatar-assistant { object-fit: cover; }
+#agent-panel .agent-message-avatar-user { border-radius: 50%; background: var(--platform-raised); color: var(--platform-muted); }
+#agent-panel .agent-message-avatar-user .anticon { font-size: 13px; }
+#agent-panel .agent-message-avatar-error { background: var(--platform-raised); color: var(--platform-danger); font-size: 14px; font-weight: 700; }
 #agent-panel .agent-message-meta strong { font-weight: 600; }
 #agent-panel .agent-message-meta time { color: var(--platform-muted); font-size: 10px; }
 #agent-panel .agent-message-content { font-size: 14px; line-height: 1.85; }
 #agent-panel .agent-message-user { display: flex; flex-direction: column; align-items: flex-end; padding-left: 28px; }
+#agent-panel .agent-message-user .agent-message-meta { justify-content: flex-end; }
 #agent-panel .agent-message-user .agent-message-meta strong { color: var(--platform-muted); }
 #agent-panel .agent-message-user .agent-message-content { width: fit-content; max-width: 100%; background: var(--platform-accent-soft); color: var(--platform-ink); padding: 10px 14px; border-radius: 8px 8px 2px 8px; }
-#agent-panel .agent-message-assistant .agent-message-meta strong::before { content: ''; display: inline-block; width: 6px; height: 6px; background: var(--platform-accent); border-radius: 2px; margin: 0 7px 1px 0; }
+#agent-panel .agent-message-assistant .agent-message-content, #agent-panel .agent-message-assistant .agent-trace { margin-left: 36px; }
 #agent-panel .agent-message-error .agent-message-content { padding: 10px 12px; background: var(--platform-raised); border-left: 2px solid var(--platform-danger); border-radius: 4px; }
 #agent-panel .agent-markdown { white-space: normal; min-width: 0; }
 .agent-markdown > :first-child { margin-top: 0; }

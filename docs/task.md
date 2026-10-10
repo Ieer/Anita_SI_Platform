@@ -73,7 +73,7 @@
 | 邮件监听 | ![邮件监听](../screenshots/task_listen.png) |
 | SSH 执行 | ![SSH 执行配置](../screenshots/task_run_type.png) |
 | Shell 脚本 | ![Shell 脚本配置](../screenshots/task_script_shell.png) |
-| 通知绑定 | ![任务通知绑定](../screenshots/setting_notify_bind.png) |
+| 通知配置字段 | ![未配置真实渠道的任务通知字段示例](../screenshots/setting_notify_bind.png) |
 | 运行记录 | ![任务运行日志](../screenshots/task_log.png) |
 | 运行详情 | ![任务日志详情](../screenshots/task_log_example.png) |
 

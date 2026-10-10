@@ -1,6 +1,7 @@
 import feffery_antd_components as fac
 from dash_view.framework.lang import render_lang_content
 from common.utilities.util_menu_access import MenuAccess
+from dash_view.framework.user_avatar import render_user_avatar
 from dash import html
 from server import app
 from dash.dependencies import Input, Output, State
@@ -119,13 +120,7 @@ def render_head_content(menu_access: MenuAccess):
             fac.AntdSpace(
                 [
                     fac.AntdBadge(
-                        fac.AntdAvatar(
-                            id='global-head-avatar',
-                            mode='image',
-                            src=f'/avatar/{menu_access.user_info.user_name}',
-                            alt=menu_access.user_info.user_full_name,
-                            size=36,
-                        ),
+                        render_user_avatar(menu_access.user_info, size=36, component_id='global-head-avatar'),
                         # count=6, # TODO: 消息通知
                         size='small',
                     ),

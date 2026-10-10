@@ -8,10 +8,12 @@ def render_aside_content(menu_access: MenuAccess):
     navigation_items = [item for item in menu_access.menu if item['props']['key'] != '/person_']
     return html.Nav([
         html.Div([
-            html.Div(fac.AntdIcon(icon='antd-code'), className='platform-brand-mark'),
+            html.Div(html.Img(src='/assets/imgs/digital-human-mark.svg', alt='',
+                              className='platform-brand-image'), className='platform-brand-mark'),
             html.Div([
+                html.Img(src='/assets/imgs/anita-wordmark.svg', alt='Anita',
+                         className='platform-brand-wordmark', width=76, height=24),
                 html.Span(ShowConf.APP_NAME, id='logo-text'),
-                html.Span('OPERATIONS CONSOLE', className='platform-brand-caption'),
             ], className='platform-brand-copy'),
         ], className='platform-sidebar-brand'),
         html.Button(fac.AntdIcon(icon='antd-close'), id='platform-navigation-close',
@@ -24,5 +26,5 @@ def render_aside_content(menu_access: MenuAccess):
             expandIcon={'expand': fac.AntdIcon(icon='antd-right'),
                         'collapse': fac.AntdIcon(icon='antd-caret-down')},
         ),
-        html.Div([html.Span('SMART AGENT'), html.Span('OPERATIONS / AUTOMATION')], className='platform-nav-footer'),
+        html.Div([html.Span('SI-PLATFORM'), html.Span('OPERATIONS / AUTOMATION')], className='platform-nav-footer'),
     ], id='platform-navigation', **{'aria-label': '主导航'})

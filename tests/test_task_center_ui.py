@@ -9,6 +9,65 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
+def test_hackathon_demo_story_and_synthetic_monitor():
+    from playwright.sync_api import expect, sync_playwright
+
+    url = os.environ.get('PLATFORM_TASK_DEMO_URL', 'http://127.0.0.1:8097')
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={'width': 1440, 'height': 960})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(url + '/demo')
+        banner = page.locator('#platform-demo-banner')
+        banner.wait_for(timeout=30000)
+        assert banner.inner_text().startswith('演示模式')
+        assert banner.evaluate('(node) => getComputedStyle(node).position') == 'static'
+        assert page.locator('.platform-nav-footer').inner_text().startswith('SI-PLATFORM')
+        page.goto(url + '/dashboard_/monitor')
+        page.locator('#monitor-summary .monitor-metric-value').first.wait_for(timeout=20000)
+        metrics = page.locator('#monitor-summary').inner_text()
+        assert '93.0%' in metrics and '86.0%' in metrics and '92.0%' in metrics
+
+        page.locator('#agent-launcher').click()
+        page.locator('#agent-panel').wait_for(state='visible')
+        expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+        page.locator('#agent-new-conversation').click()
+        expect(page.locator('#agent-send')).to_be_enabled(timeout=15000)
+        assert page.locator('#agent-model-status').inner_text() == '演示剧本 · 非模型'
+        page.locator('#agent-prompt').fill('分析当前告警')
+        expect(page.locator('#agent-prompt')).to_have_value('分析当前告警')
+        page.locator('#agent-send').click()
+        expect(page.locator('.agent-message-user .agent-message-avatar-user .ant-avatar-string')).to_have_text('演')
+        expect(page.locator('.agent-message-assistant').last).to_contain_text('93%', timeout=15000)
+
+        page.locator('#agent-prompt').fill('查看票据归档的最近运行日志')
+        expect(page.locator('#agent-prompt')).to_have_value('查看票据归档的最近运行日志')
+        page.locator('#agent-send').click()
+        expect(page.locator('.agent-message-assistant').last).to_contain_text('没有读取任何日志', timeout=15000)
+        assert page.locator('.agent-trace').count() == 0
+
+        page.locator('#agent-log-consent').check()
+        page.locator('#agent-prompt').fill('查看票据归档的最近运行日志')
+        expect(page.locator('#agent-prompt')).to_have_value('查看票据归档的最近运行日志')
+        page.locator('#agent-send').click()
+        answer = page.locator('.agent-message-assistant').last
+        expect(answer).to_contain_text('最近运行状态为 failed', timeout=15000)
+        assert 'DEMO-INCIDENT-01' in answer.inner_text()
+        assert '没有提议或执行任务' in answer.inner_text()
+        assert page.locator('.agent-trace').count() == 1
+
+        page.locator('#agent-prompt').fill('运行任务票据归档')
+        expect(page.locator('#agent-prompt')).to_have_value('运行任务票据归档')
+        page.locator('#agent-send').click()
+        expect(page.locator('.agent-message-assistant').last).to_contain_text('只提供只读分析', timeout=15000)
+        assert page.locator('.agent-trace').count() == 1
+        assert page.locator('#agent-approvals').inner_text() == ''
+        assert not errors, errors
+        browser.close()
+
+
+@pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
 def test_gantt_readability():
     from playwright.sync_api import sync_playwright
 

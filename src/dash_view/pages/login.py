@@ -19,8 +19,13 @@ def render_content():
         html.Div(id='login-webgl', className='login-webgl', **{'aria-hidden': 'true'}),
         html.Header([
             html.Div([
-                html.Div(fac.AntdIcon(icon='antd-code'), className='platform-brand-mark'),
-                html.Span(ShowConf.APP_NAME),
+                html.Div(html.Img(src='/assets/imgs/digital-human-mark.svg', alt='',
+                                  className='platform-brand-image'), className='platform-brand-mark'),
+                html.Div([
+                    html.Img(src='/assets/imgs/anita-wordmark.svg', alt='Anita',
+                             className='platform-brand-wordmark', width=95, height=30),
+                    html.Span(ShowConf.APP_NAME, className='login-brand-platform'),
+                ], className='platform-brand-copy'),
             ], className='login-brand'),
             render_lang_content(),
         ], className='login-header'),

@@ -1,3 +1,5 @@
+import os
+
 import feffery_antd_components as fac
 from dash import html
 from dash_view.framework.aside import render_aside_content
@@ -12,6 +14,7 @@ from dash_view.pages import page_403, page_404
 import dash_callback.pages.main_c  # noqa
 
 def render_content(menu_access: MenuAccess, href: str):
+    demo_mode = os.environ.get('SMART_AGENT_DEMO_MODE') == '1'
     _, url_menu_item, url_query, _, param = parse_url(href=href)
     module_page = resolve_page(url_menu_item, menu_access)
     if module_page in (page_403, page_404):
@@ -55,6 +58,11 @@ def render_content(menu_access: MenuAccess, href: str):
                         className='platform-topbar',
                         style={'height': '50px'},
                     ),
+                    html.Div([
+                        fac.AntdIcon(icon='antd-info-circle'),
+                        html.Span('演示模式'),
+                        html.Span('合成指标与任务 · Anita 固定剧本 · 无模型与外部执行'),
+                    ], id='platform-demo-banner', className='platform-demo-banner', role='status') if demo_mode else None,
                     # tabs块
                     fac.AntdRow(
                         fuc.FefferyDiv(
@@ -127,7 +135,7 @@ def render_content(menu_access: MenuAccess, href: str):
                 style={'minWidth': 0, 'overflow': 'hidden'},
             ),
         ],
-        className='platform-shell',
+        className='platform-shell platform-demo-shell' if demo_mode else 'platform-shell',
         style={'width': '100vw', 'height': '100dvh'},
         wrap=False,
     )

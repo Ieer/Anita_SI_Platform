@@ -67,7 +67,7 @@ def handle_conversation(selected, clicks, active, prompt, consent):
     try:
         if ctx.triggered_id != 'agent-send':
             messages = dao_agent.read_messages(access.user_name, selected)
-            return render_messages(messages), selected, '当前会话', '', ''
+            return render_messages(messages, access.user_info), selected, '当前会话', '', ''
         if not clicks:
             raise PreventUpdate
         if active != selected:
@@ -89,7 +89,7 @@ def handle_conversation(selected, clicks, active, prompt, consent):
             {'label': row['title'], 'value': row['conversation_id']} for row in conversations]})
         set_props('agent-model-status', {'children': result['model'], 'className': 'agent-model-ready'})
         set_props('agent-response-event', {'children': result['answer'], 'data-turn-id': turn_id})
-        return render_messages(messages), selected, '当前会话', '', ''
+        return render_messages(messages, current_access.user_info), selected, '当前会话', '', ''
     except AgentError as error:
         message = str(error)
     except Exception:
@@ -100,7 +100,7 @@ def handle_conversation(selected, clicks, active, prompt, consent):
             current_access = get_menu_access()
             if current_access.has_access('工作台-页面') and current_access.user_name == access.user_name:
                 messages = dao_agent.read_messages(access.user_name, selected)
-                return render_messages(messages), selected, '当前会话', no_update, message
+                return render_messages(messages, current_access.user_info), selected, '当前会话', no_update, message
         except Exception:
             pass
     return no_update, no_update, no_update, no_update, message

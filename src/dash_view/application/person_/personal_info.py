@@ -2,6 +2,7 @@ from common.utilities.util_menu_access import MenuAccess
 import feffery_antd_components as fac
 import feffery_utils_components as fuc
 from common.utilities.util_logger import Log
+from dash_view.framework.user_avatar import render_user_avatar
 from dash import html
 from dash import dcc
 from database.sql_db.dao import dao_user
@@ -68,13 +69,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
                 [
                     dcc.Upload(
                         fac.AntdButton(
-                            fac.AntdAvatar(
-                                id='personal-info-avatar',
-                                mode='image',
-                                src=f'/avatar/{user_info.user_name}',
-                                alt=full_name,
-                                size=76,
-                            ),
+                            render_user_avatar(user_info, size=76, component_id='personal-info-avatar'),
                             id='personal-info-avatar-upload-button',
                             type='text',
                             shape='circle',

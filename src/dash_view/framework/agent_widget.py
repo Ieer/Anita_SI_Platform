@@ -1,26 +1,38 @@
+import os
+
 from dash import dcc, html
 import feffery_antd_components as fac
 
 from common.utilities.util_menu_access import MenuAccess
 from common.agent import model_status
+from dash_view.framework.user_avatar import avatar_file_exists, render_user_avatar
 import dash_callback.pages.agent_widget_c  # noqa
 
 
-def render_messages(messages):
+def render_messages(messages, user_info=None):
     if not messages:
         return html.Div([
-            html.Img(src='/assets/imgs/agent-robot.png', alt='', className='agent-empty-portrait'),
+            html.Img(src='/assets/imgs/digital-human-mark.svg', alt='', className='agent-empty-portrait'),
             html.H2('有什么想聊的？'),
         ], className='agent-empty')
+    user_avatar_exists = avatar_file_exists(user_info) if any(message['role'] == 'user' for message in messages) else False
     tool_titles = {'list_tasks': '查询任务', 'read_latest_log': '读取日志', 'propose_run_task': '提议运行'}
     status_titles = {'ok': '完成', 'unavailable': '不可用', 'not_found': '未找到', 'pending_approval': '待审批'}
-    role_titles = {'user': '你', 'assistant': 'Agent', 'error': '请求失败'}
+    role_titles = {'user': '你', 'assistant': 'Anita', 'error': '请求失败'}
     return [
         html.Article([
             html.Div([
+                *([html.Img(src='/assets/imgs/digital-human-mark.svg', alt='Anita',
+                            className='agent-message-avatar agent-message-avatar-assistant')]
+                  if message['role'] == 'assistant' else []),
                 html.Strong(role_titles.get(message['role'], 'Agent')),
                 html.Time(message.get('created_at', '')[11:16],
                           title=message.get('created_at', '')[:19].replace('T', ' ')),
+                     *([render_user_avatar(user_info, size=28,
+                                      class_name='agent-message-avatar agent-message-avatar-user',
+                                      avatar_exists=user_avatar_exists)] if message['role'] == 'user' else []),
+                *([html.Span('!', className='agent-message-avatar agent-message-avatar-error',
+                             **{'aria-label': '请求失败'})] if message['role'] == 'error' else []),
             ], className='agent-message-meta'),
             dcc.Markdown(message['content'], dangerously_allow_html=False, className='agent-message-content agent-markdown')
             if message['role'] == 'assistant' else html.Div(message['content'], className='agent-message-content'),
@@ -81,20 +93,21 @@ def render_actions(actions, can_approve):
 def render_content(menu_access: MenuAccess, **kwargs):
     if not menu_access.has_access('工作台-页面'):
         return None
+    demo_mode = os.environ.get('SMART_AGENT_DEMO_MODE') == '1'
     status = model_status()
     return html.Div([
         html.Button([
             html.Img(src='/assets/imgs/agent-robot.png', className='agent-robot-fallback', alt=''),
             html.Div(id='agent-robot-scene', className='agent-robot-scene', **{'aria-hidden': 'true'}),
-            html.Span('Agent', className='agent-launcher-label'),
+            html.Span('Anita', className='agent-launcher-label'),
         ], id='agent-launcher', type='button', title='打开 Agent 对话',
             **{'aria-label': '打开 Agent 对话', 'aria-expanded': 'false', 'aria-controls': 'agent-panel'}),
         html.Section([
             html.Header([
                 html.Div([
-                    html.Img(src='/assets/imgs/agent-robot.png', alt='', className='agent-header-portrait'),
+                    html.Img(src='/assets/imgs/digital-human-mark.svg', alt='', className='agent-header-portrait'),
                     html.Div([
-                        html.H2('Agent', id='agent-panel-title'),
+                        html.H2('Anita', id='agent-panel-title'),
                         html.Span(status['model'] or '模型未配置', id='agent-model-status',
                                   className='agent-model-ready' if status['ready'] else 'agent-model-offline'),
                     ], className='agent-header-text'),
@@ -128,7 +141,8 @@ def render_content(menu_access: MenuAccess, **kwargs):
                                   **{'aria-label': '消息'}),
                     html.Div([
                         fac.AntdCheckbox(id='agent-log-consent', checked=False,
-                                         label='允许将脱敏日志发送给模型',
+                                          label=('允许读取脱敏演示日志（仅本地）' if demo_mode
+                                              else '允许将脱敏日志发送给模型'),
                                          disabled=not menu_access.has_access('任务日志-页面')),
                         fac.AntdButton(id='agent-send', type='primary', title='发送消息',
                                        icon=fac.AntdIcon(icon='antd-arrow-up'), disabled=True,

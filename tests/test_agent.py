@@ -12,7 +12,9 @@ from common.agent import AgentError, ModelSettings, allowed_tools, execute_tool,
 
 
 def access(*permissions):
-    return SimpleNamespace(user_name='probe', has_access=lambda permission: permission in permissions)
+    user_info = SimpleNamespace(user_name='probe', user_full_name='Probe')
+    return SimpleNamespace(user_name='probe', user_info=user_info,
+                           has_access=lambda permission: permission in permissions)
 
 
 def completion(content=None, calls=None):
@@ -24,6 +26,18 @@ def tool_call(name, arguments):
 
 
 class AgentTests(unittest.TestCase):
+    def test_user_avatar_initials_support_chinese_latin_and_empty_names(self):
+        from dash_view.framework.user_avatar import get_avatar_initials, render_user_avatar
+
+        self.assertEqual(get_avatar_initials(SimpleNamespace(user_full_name='张小明', user_name='zhang')), '张')
+        self.assertEqual(get_avatar_initials(SimpleNamespace(user_full_name='Grace Hopper', user_name='gh')), 'GH')
+        self.assertEqual(get_avatar_initials(SimpleNamespace(user_full_name='', user_name='liuwei')), 'L')
+        self.assertEqual(get_avatar_initials(SimpleNamespace(user_full_name='', user_name='')), '?')
+        fallback = render_user_avatar(SimpleNamespace(user_full_name='Grace Hopper', user_name='gh'),
+                                      size=28, avatar_exists=False)
+        self.assertEqual(fallback.mode, 'text')
+        self.assertEqual(fallback.text, 'GH')
+
     def test_configuration_is_required_and_never_exposes_key(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertFalse(model_status()['ready'])
@@ -91,6 +105,33 @@ class AgentTests(unittest.TestCase):
         self.assertNotIn('json-secret', redact('{"api_key": "json-secret"}'))
         self.assertNotIn('token-secret', redact('token=token-secret'))
 
+    def test_demo_agent_requires_consent_for_local_synthetic_log(self):
+        from scripts.demo_task_center import DEMO_AGENT_MODEL, demo_agent_turn
+
+        menu_access = access('工作台-页面', '任务日志-页面')
+        with patch('common.agent.execute_tool') as execute:
+            denied = demo_agent_turn('查看票据归档日志', menu_access)
+            execute.assert_not_called()
+            self.assertIn('没有读取任何日志', denied['answer'])
+            self.assertEqual(denied['trace'], [])
+            running_log = demo_agent_turn('查看票据归档的最近运行日志', menu_access)
+            self.assertIn('没有读取任何日志', running_log['answer'])
+            execute.assert_not_called()
+            run_request = demo_agent_turn('运行任务票据归档', menu_access)
+            self.assertIn('只读分析', run_request['answer'])
+            execute.assert_not_called()
+
+            execute.return_value = {'status': 'ok', 'job_id': '票据归档', 'run_status': 'failed',
+                                    'log': '[DEMO] synthetic only'}
+            granted = demo_agent_turn('查看票据归档日志', menu_access, allow_log_export=True)
+
+        execute.assert_called_once_with('read_latest_log', {'job_id': '票据归档'}, menu_access,
+                                        allow_log_export=True)
+        self.assertEqual(granted['model'], DEMO_AGENT_MODEL)
+        self.assertEqual(granted['trace'][0]['tool'], 'read_latest_log')
+        self.assertEqual(granted['proposals'], [])
+        self.assertIn('不是模型生成', granted['answer'])
+
     def test_structured_redaction_preserves_valid_trace_json(self):
         from common.agent import redact_structure
 
@@ -126,6 +167,9 @@ class AgentTests(unittest.TestCase):
         for identifier in ['agent-prompt', 'agent-send', 'agent-log-consent', 'agent-conversation-select',
                            'agent-launcher', 'agent-panel', 'agent-robot-scene']:
             self.assertIn(identifier, layout)
+        self.assertIn('/assets/imgs/digital-human-mark.svg', layout)
+        self.assertIn('agent-empty-portrait', layout)
+        self.assertIn('agent-header-portrait', layout)
         self.assertNotIn('Agent 工作台', layout)
         self.assertIn('"hidden": true', layout)
         from config.access_factory import AccessFactory
@@ -153,17 +197,28 @@ class AgentTests(unittest.TestCase):
     def test_widget_formats_assistant_markdown_without_enabling_html(self):
         from dash import dcc, html
         from dash_view.framework.agent_widget import render_messages
+        from types import SimpleNamespace
 
         content = '### Result\n\n**Ready**\n\n<script>alert(1)</script>'
-        messages = render_messages([
-            {'role': 'assistant', 'content': content, 'created_at': '2026-10-05T12:30:00'},
-            {'role': 'user', 'content': content, 'created_at': '2026-10-05T12:31:00'},
-        ])
+        user_info = SimpleNamespace(user_name='grace.hopper', user_full_name='Grace Hopper')
+        with patch('dash_view.framework.agent_widget.avatar_file_exists', return_value=True):
+            messages = render_messages([
+                {'role': 'assistant', 'content': content, 'created_at': '2026-10-05T12:30:00'},
+                {'role': 'user', 'content': content, 'created_at': '2026-10-05T12:31:00'},
+            ], user_info)
+        assistant_avatar = messages[0].children[0].children[0]
+        self.assertEqual(assistant_avatar.src, '/assets/imgs/digital-human-mark.svg')
+        self.assertEqual(assistant_avatar.className, 'agent-message-avatar agent-message-avatar-assistant')
         self.assertIsInstance(messages[0].children[1], dcc.Markdown)
         self.assertFalse(messages[0].children[1].dangerously_allow_html)
+        user_avatar = messages[1].children[0].children[-1]
+        self.assertEqual(user_avatar.className, 'agent-message-avatar agent-message-avatar-user')
+        self.assertEqual(user_avatar.src, '/avatar/grace.hopper')
+        self.assertEqual(user_avatar.alt, 'GH')
+        self.assertEqual(user_avatar.to_plotly_json()['props']['aria-label'], 'Grace Hopper')
         self.assertIsInstance(messages[1].children[1], html.Div)
         self.assertEqual(messages[1].children[1].children, content)
-        timestamp = messages[0].children[0].children[1]
+        timestamp = messages[0].children[0].children[2]
         self.assertEqual(timestamp.children, '12:30')
         self.assertEqual(timestamp.title, '2026-10-05 12:30:00')
 

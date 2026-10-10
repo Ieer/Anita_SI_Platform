@@ -90,7 +90,7 @@ Agent 执行已有任务默认关闭。显式配置 `SMART_AGENT_RUN_ALLOWLIST` 
 python scripts/demo_task_center.py --port 8097
 ```
 
-访问 `http://127.0.0.1:8097/demo`。演示使用临时 SQLite、演示管理员、模拟平台/Windows 任务和模拟成功、失败、未知及运行中记录；脚本、SSH 与 Windows 操作都不会真实执行。演示自动登录路由仅由此脚本注册，不可用于生产部署。进程退出后临时数据清理，真实数据库和 scheduler 不变。
+访问 `http://127.0.0.1:8097/demo`。演示使用临时 SQLite、演示管理员、固定合成主机指标、模拟平台/Windows 任务和模拟成功、失败、未知及运行中记录；没有本机指标采样。Anita 使用确定性固定剧本，不创建 OpenAI 客户端；读取模拟日志仍需页面权限和“仅本地”明确同意，任务执行请求只会被拒绝，不生成审批。脚本、scheduler、SSH 与 Windows 操作都不会真实执行。演示自动登录路由仅由此脚本注册，不可用于生产部署。进程退出后临时数据清理，真实数据库和 scheduler 不变。
 
 浏览器回归需要安装 Playwright 与 Chromium，并显式启用：
 

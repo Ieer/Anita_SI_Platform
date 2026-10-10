@@ -11,6 +11,66 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEMO_AGENT_MODEL = '演示剧本 · 非模型'
+
+
+def demo_system_info(now=None):
+    now = now or datetime.now()
+    sampled_at = now.strftime('%Y-%m-%d %H:%M:%S')
+    return {
+        'hostname': 'demo-host.invalid', 'os_name': 'SI-Platform Synthetic Host',
+        'computer_name': 'DEMO-NODE-01', 'os_arch': 'x86_64', 'sampled_at': sampled_at,
+        'boot_time': '2026-10-10 08:00:00', 'host_uptime': '0d/4h/0m',
+        'cpu_name': 'Demo Virtual CPU', 'cpu_num': 8, 'cpu_physical_num': 4,
+        'cpu_frequency': '2.40 GHz', 'cpu_free_percent': .07,
+        'cpu_user_usage_percent': .68, 'cpu_sys_usage_percent': .25,
+        'cpu_all_usage_percent': .93, 'memory_total': '16.0GB', 'memory_used': '13.8GB',
+        'memory_free': '2.2GB', 'memory_available': '2.2GB', 'memory_usage_percent': .86,
+        'swap_total': '2.0GB', 'swap_used': '0.4GB', 'swap_usage_percent': .2,
+        'python_version': '3.11 demo', 'start_time': '2026-10-10 08:00:00',
+        'run_time': '0d/4h/0m', 'current_process_memory_usage': '256.0MB',
+        'process_id': 4812, 'process_threads': 12, 'process_memory_percent': .016,
+        'network_sent': '128.0MB', 'network_received': '842.0MB',
+        'network_errors': 0, 'network_dropped': 0,
+        'disk_read': '1.2GB', 'disk_written': '684.0MB',
+        'sys_files': [{
+            'key': 'demo-volume', 'dir_name': 'DEMO-VOLUME', 'sys_type_name': 'SyntheticFS',
+            'type_name': 'Demo volume', 'total': '100GB', 'used': '92GB', 'free': '8GB',
+            'usage': '92.0%', 'usage_percent': 92, 'readable': True,
+        }],
+    }
+
+
+def demo_agent_turn(prompt, menu_access, history=(), allow_log_export=False, access_provider=None):
+    text = prompt.casefold()
+    if any(word in text for word in ('执行任务', '运行任务', '重试', '启动任务')):
+        answer = ('当前演示只提供只读分析，不会提议、启动或重试任务。真实产品中的任务操作需要单独配置白名单，'
+                  '并经过人工核对与审批。')
+        return {'answer': answer, 'trace': [], 'model': DEMO_AGENT_MODEL, 'proposals': []}
+    if any(word in text for word in ('日志', 'log', '票据归档')):
+        if not allow_log_export:
+            answer = ('可以检查“票据归档”的合成运行日志。请先勾选“允许读取脱敏演示日志（仅本地）”并重新发送；'
+                      '这次没有读取任何日志，也没有向外部模型发送数据。')
+            return {'answer': answer, 'trace': [], 'model': DEMO_AGENT_MODEL, 'proposals': []}
+        from common.agent import execute_tool
+
+        current_access = access_provider() if access_provider is not None else menu_access
+        result = execute_tool('read_latest_log', {'job_id': '票据归档'}, current_access,
+                              allow_log_export=True)
+        trace = [{'tool': 'read_latest_log', 'status': result['status'],
+                  'arguments': json.dumps({'job_id': '票据归档'}, ensure_ascii=False)}]
+        if result['status'] != 'ok':
+            answer = '没有找到可读取的合成运行日志；没有执行任何任务。'
+        else:
+            excerpt = result['log'][-600:].strip()
+            answer = (f"合成记录显示“{result['job_id']}”最近运行状态为 {result['run_status']}。"
+                      f"\n\n脱敏日志摘录：\n\n```text\n{excerpt}\n```\n\n"
+                      '这是固定演示剧本，不是模型生成；我没有提议或执行任务。')
+        return {'answer': answer, 'trace': trace, 'model': DEMO_AGENT_MODEL, 'proposals': []}
+    answer = ('合成主机 DEMO-NODE-01 当前触发容量告警：CPU 93%、内存 86%、磁盘 92%。'
+              '这是预置演示数据，不来自当前电脑。示例任务“票据归档”有一条模拟失败记录；'
+              '可请求查看日志以演示本地授权流程。本演示只读，不会自动重试或执行任务。')
+    return {'answer': answer, 'trace': [], 'model': DEMO_AGENT_MODEL, 'proposals': []}
 
 
 def serve(port=8097):
@@ -27,7 +87,7 @@ def serve(port=8097):
         from database.sql_db.dao import dao_task_center
         from database.sql_db.entity.table_user import SysGroup, SysGroupUser, SysUser, SysUserRole
         from common import task_center
-        from common.utilities import util_apscheduler
+        from common.utilities import util_apscheduler, util_sys
         from dash_components.windows_tasks_manager import WindowsTasksManager
 
         now = datetime.now()
@@ -64,9 +124,11 @@ def serve(port=8097):
                 TaskRun.update(started_at=started, requested_at=started).where(TaskRun.run_id == run_id).execute()
                 dao_task_center.append_log(run_id, f'[DEMO] {name}\n[INFO] batch={index:03}-{attempt}\n')
                 dao_task_center.append_log(run_id, '[INFO] read 240 records\n[INFO] validated schema\n')
-                status = 'failed' if index == 3 and attempt == 2 else 'succeeded'
+                status = 'failed' if index == 3 and attempt == 0 else 'succeeded'
                 if index == 6 and attempt == 2:
                     status = 'unknown'
+                if status == 'failed':
+                    dao_task_center.append_log(run_id, '[ERROR] DEMO-INCIDENT-01: synthetic checksum mismatch.\n')
                 dao_task_center.append_log(run_id, '[INFO] ' + status + '\n')
                 dao_task_center.finish_run(run_id, status, 'isolated demo fixture')
                 if status != 'unknown':
@@ -119,6 +181,7 @@ def serve(port=8097):
             backend_rows[:] = [row for row in backend_rows if row['id'] != job_id]
 
         stack.enter_context(patch.object(task_center, '_platform_job_rows', side_effect=lambda: backend_rows))
+        stack.enter_context(patch.object(util_sys, 'get_sys_info', side_effect=demo_system_info))
         stack.enter_context(patch.object(util_apscheduler, 'get_apscheduler_all_jobs', side_effect=all_jobs))
         stack.enter_context(patch.object(util_apscheduler, '_add_job', side_effect=add_job))
         stack.enter_context(patch.object(util_apscheduler, 'start_stop_job', side_effect=toggle))
@@ -142,7 +205,21 @@ def serve(port=8097):
 
         stack.enter_context(patch.object(util_startup, 'load_startup_config', side_effect=lambda *args, **kwargs: dict(startup)))
         stack.enter_context(patch.object(util_startup, 'save_scheduler_mode', side_effect=save_demo_policy))
-        stack.enter_context(patch.dict(os.environ, {'SMART_AGENT_API_KEY': '', 'SMART_AGENT_RUN_ALLOWLIST': '[]'}))
+        stack.enter_context(patch.dict(os.environ, {
+            'SMART_AGENT_API_KEY': '', 'SMART_AGENT_MODEL': '', 'SMART_AGENT_RUN_ALLOWLIST': '[]',
+            'SMART_AGENT_DEMO_MODE': '1',
+        }))
+        from common.agent import ModelSettings
+        from dash_callback.pages import agent_widget_c
+        from dash_view.framework import agent_widget
+
+        demo_settings = ModelSettings(api_key='', model=DEMO_AGENT_MODEL)
+        demo_model_status = {'ready': True, 'model': DEMO_AGENT_MODEL,
+                             'message': '确定性演示剧本；不调用外部模型。'}
+        stack.enter_context(patch.object(ModelSettings, 'from_environment', return_value=demo_settings))
+        stack.enter_context(patch.object(agent_widget_c, 'run_turn', side_effect=demo_agent_turn))
+        stack.enter_context(patch.object(agent_widget_c, 'model_status', return_value=demo_model_status))
+        stack.enter_context(patch.object(agent_widget, 'model_status', return_value=demo_model_status))
         stack.enter_context(patch.object(WindowsTasksManager, 'get_scheduled_tasks', side_effect=lambda: native_rows))
         def native_operation(path, operation):
             row = next(row for row in native_rows if row['TaskName'] == path)
@@ -166,16 +243,6 @@ def serve(port=8097):
             response = make_response(redirect('/task_/overview'))
             response.set_cookie('Authorization', 'Bearer ' + jwt_encode(
                 {'user_name': 'demo_admin', 'token_use': 'session'}), httponly=True, samesite='Lax')
-            return response
-
-        @server.after_request
-        def demo_banner(response):
-            if response.mimetype == 'text/html':
-                text = response.get_data(as_text=True)
-                response.set_data(text.replace('</body>', '<div id="task-demo-banner" '
-                    'style="position:fixed;bottom:0;left:0;z-index:2000;background:#fef3c7;color:#713f12;'
-                    'padding:4px 12px;font-size:12px;pointer-events:none">'
-                    '演示环境 · 临时数据 · 所有执行均为模拟</div></body>'))
             return response
 
         print(f'TASK_DEMO_URL=http://127.0.0.1:{port}/demo', flush=True)

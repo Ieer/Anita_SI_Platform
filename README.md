@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="logo.png" alt="SI-Platform" width="96">
+  <img src="src/assets/imgs/digital-human-mark.svg" alt="Anita 数字人头像" width="80" height="80" align="middle">
+  &nbsp;&nbsp;
+  <img src="src/assets/imgs/anita-wordmark.svg" alt="Anita" width="152" height="48" align="middle">
 </p>
 
 <h1 align="center">SI-Platform</h1>
@@ -12,6 +14,32 @@
 
 SI-Platform 提供后台管理、权限控制、主机监控和统一任务中心。任务调度、Windows 原生计划任务和可选 AI Agent 有明确的运行边界；演示与测试使用隔离数据，不代表生产系统已完成安全或外部服务认证。
 
+## 三分钟隔离演示
+
+无需模型密钥或外部服务。从项目根目录运行：
+
+```powershell
+python scripts/demo_task_center.py --port 8097
+```
+
+打开 `http://127.0.0.1:8097/demo`。这是仅监听本机的临时演示服务，使用临时 SQLite；进程退出后数据清理，不启动真实 scheduler，也不读取本机系统指标。
+
+1. 在系统监控中查看预置合成告警：CPU 93%、内存 86%、磁盘 92%。
+2. 打开 Anita，询问“分析当前告警”；页面明确标注固定剧本，不是模型生成。
+3. 询问“查看票据归档的最近运行日志”。首次请求会拒绝读取；勾选“允许读取脱敏演示日志（仅本地）”后重发，展示权限保护下的本地合成日志和工具记录。
+4. 询问“运行任务票据归档”；演示只读分析，不生成审批或运行任务。平台任务、Windows 任务及回执全部为模拟。
+
+[播放 MVP 演示视频（WebM，约 15 秒）](screenshots/si-platform-mvp-demo.webm)。视频由 Playwright 直接录制，展示告警分析、日志授权前后的行为和拒绝执行边界。
+
+重新录制需安装 Playwright 和 Chromium，并先启动上面的隔离演示服务：
+
+```powershell
+$env:PLATFORM_TASK_DEMO_URL = 'http://127.0.0.1:8097'
+python scripts/record_demo_video.py
+```
+
+演示入口只由该脚本注册，不可用于生产部署。它不调用外部模型、scheduler、Windows 任务、SSH 或通知服务；要展示真实集成，需另行配置和认证。
+
 ## 功能
 
 - 登录、动态码、OAuth2 Provider，以及用户、角色、团队和页面权限管理。
@@ -20,6 +48,17 @@ SI-Platform 提供后台管理、权限控制、主机监控和统一任务中�
 - 周期、Cron、单次和邮件 POP3 监听触发；任务保存后默认暂停，需显式恢复。
 - Windows 任务计划程序独立管理。不会自动导入、停用、删除或双向同步 Windows 任务。
 - 可选 Agent：通过 OpenAI 兼容接口读取受权限限制的任务信息；日志外发需用户授权。已有任务执行审批默认关闭，必须显式配置白名单并由用户确认。
+
+## Dash 页面模板
+
+页面脚手架生成主题适配的指标、示例记录、搜索/状态筛选和表格，并在筛选回调中校验页面权限。先预览，再生成：
+
+```powershell
+python scripts/scaffold_page.py --module analytics --title 分析中心 --subpage 总览:overview:1 --dry-run
+python scripts/scaffold_page.py --module analytics --title 分析中心 --subpage 总览:overview:1
+```
+
+生成的记录明确标为示例数据；业务接入时应替换 fixture 并为写操作实现独立的服务端授权。更多页面约定见[新增页面指南](docs/add_page_guide_full.md)。
 
 ## 快速启动
 
@@ -95,17 +134,17 @@ python -m pytest tests -q
 
 | 登录 | Agent 浮窗 |
 | --- | --- |
-| ![SI-Platform 登录页](screenshots/login.png) | ![系统监控中的 Agent 浮窗](screenshots/workbench.png) |
+| ![SI-Platform 登录页](screenshots/login.png) | ![Anita Agent 演示对话](screenshots/workbench.png) |
 
 | 系统监控 | 任务中心 |
 | --- | --- |
-| ![系统监控](screenshots/moniter.png) | ![平台任务](screenshots/task_mgmt.png) |
+| ![系统监控](screenshots/moniter.png) | ![任务中心概览](screenshots/task_overview.png) |
 
 | 任务日志 | 角色管理 |
 | --- | --- |
 | ![任务运行日志](screenshots/task_log.png) | ![角色管理](screenshots/role.png) |
 
-截图展示隔离演示数据，不包含生产任务或真实凭据。
+仓库截图仅为界面样例，不代表实时状态。隔离演示中的监控指标、任务和回执均为合成数据；截图和演示都不构成真实模型、SSH、通知或 Windows 生命周期认证。
 
 ## 项目结构
 

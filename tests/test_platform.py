@@ -103,6 +103,24 @@ class ThemeTests(unittest.TestCase):
 
 
 class MonitorTests(unittest.TestCase):
+    def test_demo_host_snapshot_is_synthetic_and_uses_monitor_contract(self):
+        from datetime import datetime
+        from scripts.demo_task_center import demo_system_info
+        from dash_callback.application.dashboard_ import monitor_c
+        from server import server
+
+        info = demo_system_info(datetime(2026, 10, 10, 12, 0, 0))
+        with server.test_request_context('/'):
+            summary, history, figure, disks, status = monitor_c.build_snapshot(info, [])
+
+        self.assertEqual(info['hostname'], 'demo-host.invalid')
+        self.assertEqual(info['sampled_at'], '2026-10-10 12:00:00')
+        self.assertEqual(figure['data'][0]['y'], [93.0])
+        self.assertEqual(figure['data'][1]['y'], [86.0])
+        self.assertEqual(disks[0]['usage'].percent, 92)
+        self.assertEqual(disks[0]['status'][0]['color'], 'red')
+        self.assertIn('容量预警', status)
+
     def test_sampling_normalizes_cpu_and_preserves_unreadable_mounts(self):
         from collections import namedtuple
         from common.utilities import util_sys
@@ -183,8 +201,15 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(registry, ['analytics.overview'])
             source = (root / 'src/dash_view/application/analytics/overview.py').read_text(encoding='utf-8')
             self.assertIn('def render_content(menu_access: MenuAccess, **kwargs)', source)
+            self.assertIn('platform-template-metrics', source)
+            self.assertIn('platform-template-filters', source)
+            self.assertIn('analytics-overview-content-table', source)
             self.assertIn('access_metas =', source)
-            self.assertIn('from dash_callback.application.analytics import overview_c', source)
+            self.assertIn('import dash_callback.application.analytics.overview_c  # noqa', source)
+            callback = (root / 'src/dash_callback/application/analytics/overview_c.py').read_text(encoding='utf-8')
+            self.assertIn("if not access.has_access('Overview-页面')", callback)
+            self.assertIn('DEMO-001', callback)
+            self.assertIn('def filter_sample_rows', callback)
             with self.assertRaises(ValueError):
                 scaffold_page.scaffold(root, 'analytics', 'Other', '', 1, ['Other:other'])
 
@@ -201,6 +226,19 @@ class ScaffoldTests(unittest.TestCase):
                 try:
                     pages = load_application_views(root / 'src/config/applications.json')
                     self.assertEqual(pages[0].render_content(None).id, 'inventory_probe-overview-content')
+                    callback = sys.modules['dash_callback.application.inventory_probe.overview_c']
+                    allowed = SimpleNamespace(has_access=lambda permission: permission == 'Probe-页面')
+                    with patch.object(callback, 'get_menu_access', return_value=allowed):
+                        rows, status = callback.filter_sample_rows('DEMO-001', 'all')
+                        self.assertEqual([row['record_id'] for row in rows], ['DEMO-001'])
+                        self.assertEqual(status, '筛选结果 1 条')
+                        self.assertEqual(callback.reset_sample_filters(1), ('', 'all'))
+                    from dash.exceptions import PreventUpdate
+
+                    denied = SimpleNamespace(has_access=lambda _permission: False)
+                    with patch.object(callback, 'get_menu_access', return_value=denied), \
+                            self.assertRaises(PreventUpdate):
+                        callback.filter_sample_rows('', 'all')
                 finally:
                     for name in list(sys.modules):
                         if name.startswith(('dash_view.application.inventory_probe', 'dash_callback.application.inventory_probe')):
@@ -237,6 +275,9 @@ class LoginTests(unittest.TestCase):
         self.assertIn('/task_', layout)
         self.assertEqual(menu[0]['props']['key'], '/person_')
         self.assertNotIn('imgs/logo.png', layout)
+        self.assertIn('digital-human-mark.svg', layout)
+        self.assertIn('anita-wordmark.svg', layout)
+        self.assertIn('"alt": "Anita"', layout)
         self.assertNotIn('platform-primary-link', layout)
         denied = json.dumps(render_aside_content(SimpleNamespace(
             menu=[], has_access=lambda permission: False)), cls=PlotlyJSONEncoder)

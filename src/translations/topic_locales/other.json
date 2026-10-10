@@ -1,0 +1,78 @@
+{
+    "root_locale": "zh-cn",
+    "topic": "other",
+    "contents": {
+        "请不要使用IE内核浏览器": {
+            "en-us": "Please do not use Internet Explorer"
+        },
+        "Chrome内核版本号太低，请升级浏览器": {
+            "en-us": "The Chrome kernel version is too low. Please upgrade the browser"
+        },
+        "系统异常": {
+            "en-us": "System exception"
+        },
+        "请输入账号和密码": {
+            "en-us": "Please enter the account and password"
+        },
+        "验证码错误，请重新输入": {
+            "en-us": "Verification code error, please re-enter"
+        },
+        "用户名或密码错误": {
+            "en-us": "Username or password error"
+        },
+        "用户名": {
+            "en-us": "Username"
+        },
+        "密码": {
+            "en-us": "Password"
+        },
+        "验证码": {
+            "en-us": "Verification Code"
+        },
+        "密码登录": {
+            "en-us": "Password Login"
+        },
+        "请输入用户名": {
+            "en-us": "Please enter the username"
+        },
+        "请输入密码": {
+            "en-us": "Please enter the password"
+        },
+        "请输入验证码": {
+            "en-us": "Please enter the verification code"
+        },
+        "保持{}小时免登录": {
+            "en-us": "Keep login for {} hours"
+        },
+        "登录": {
+            "en-us": "Login"
+        },
+        "退出登录": {
+            "en-us": "Logout"
+        },
+        "动态码登录": {
+            "en-us": "OTP"
+        },
+        "动态码：": {
+            "en-us": "OTP:"
+        },
+        "动态码验证错误": {
+            "en-us": "OTP verify error"
+        },
+        "用户未配置动态码": {
+            "en-us": "User does not configure OTP"
+        },
+        "任务队列": {
+            "en-us": "Task Queue"
+        },
+        "人工审批": {
+            "en-us": "Human Approval"
+        },
+        "执行任务": {
+            "en-us": "Task Execution"
+        },
+        "运行记录": {
+            "en-us": "Run History"
+        }
+    }
+}

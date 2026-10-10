@@ -1,0 +1,150 @@
+{
+    "root_locale": "zh-cn",
+    "topic": "person",
+    "contents": {
+        "用户全名更新成功": {
+            "en-us": "Fullname updated successfully"
+        },
+        "用户全名更新失败": {
+            "en-us": "Fullname update failed"
+        },
+        "用户性别更新成功": {
+            "en-us": "Sex updated successfully"
+        },
+        "用户性别更新失败": {
+            "en-us": "Sex update failed"
+        },
+        "用户邮箱更新成功": {
+            "en-us": "Email updated successfully"
+        },
+        "用户邮箱更新失败": {
+            "en-us": "Email update failed"
+        },
+        "用户电话更新成功": {
+            "en-us": "Phone updated successfully"
+        },
+        "用户电话更新失败": {
+            "en-us": "Phone update failed"
+        },
+        "用户描述更新成功": {
+            "en-us": "Remark updated successfully"
+        },
+        "用户描述更新失败": {
+            "en-us": "Remark update failed"
+        },
+        "请填写旧密码": {
+            "en-us": "Please fill in the old password"
+        },
+        "密码不一致，请重新填写": {
+            "en-us": "Password does not match, please re-enter"
+        },
+        "用户密码更新成功": {
+            "en-us": "Password updated successfully"
+        },
+        "用户密码验证错误": {
+            "en-us": "Password verification error"
+        },
+        "个人信息": {
+            "en-us": "Personal Info"
+        },
+        "基本资料": {
+            "en-us": "Profile"
+        },
+        "账户安全": {
+            "en-us": "Account Security"
+        },
+        "更换头像": {
+            "en-us": "Change avatar"
+        },
+        "全名": {
+            "en-us": "Full name"
+        },
+        "邮箱": {
+            "en-us": "Email"
+        },
+        "电话": {
+            "en-us": "Phone"
+        },
+        "描述": {
+            "en-us": "About"
+        },
+        "登录密码": {
+            "en-us": "Password"
+        },
+        "使用当前密码更新账户密码": {
+            "en-us": "Change your password using your current password."
+        },
+        "动态码验证": {
+            "en-us": "Two-factor authentication"
+        },
+        "绑定动态码以增加登录验证": {
+            "en-us": "Add a verification code to strengthen sign-in security."
+        },
+        "如已绑定，再次绑定会导致之前的认证码失效，请确认": {
+            "en-us": "Rebinding replaces the existing authenticator. Continue?"
+        },
+        "用户：": {
+            "en-us": "User Name:"
+        },
+        "全名：": {
+            "en-us": "Full Name:"
+        },
+        "状态：": {
+            "en-us": "Status:"
+        },
+        "性别：": {
+            "en-us": "Sex:"
+        },
+        "团队：": {
+            "en-us": "Group:"
+        },
+        "类型：": {
+            "en-us": "Type:"
+        },
+        "邮箱：": {
+            "en-us": "Email:"
+        },
+        "电话：": {
+            "en-us": "Phone:"
+        },
+        "描述：": {
+            "en-us": "Remark:"
+        },
+        "密码：": {
+            "en-us": "Password:"
+        },
+        "旧密码": {
+            "en-us": "Old Password"
+        },
+        "新密码": {
+            "en-us": "New Password"
+        },
+        "确认密码": {
+            "en-us": "Confirm Password"
+        },
+        "修改密码": {
+            "en-us": "Change Password"
+        },
+        "请填写密码": {
+            "en-us": "Please fill in the password"
+        },
+        "密码校验错误": {
+            "en-us": "Password verification error"
+        },
+        "请打开微信，搜索“腾讯身份验证器”，点击“二维码激活”，扫描以下二维码（为防止清理缓存丢失，扫描完成后，请点击设置-备份令牌到云！！）": {
+            "en-us": "Please use Microsoft Authenticator"
+        },
+        "动态码：": {
+            "en-us": "OTP:"
+        },
+        "绑定动态码": {
+            "en-us": "Bind OTP"
+        },
+        "生成授权二维码": {
+            "en-us": "Generate QR Code"
+        },
+        "绑定动态码（生成后，之前的动态码失效）": {
+            "en-us": "Bind OTP (after generation, the previous OTP is invalid)"
+        }
+    }
+}

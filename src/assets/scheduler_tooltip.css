@@ -1,0 +1,53 @@
+
+/* 自定義 Tooltip 樣式 */
+.scheduler-tooltip {
+    visibility: hidden;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    box-shadow: 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 9px 28px 8px rgba(0, 0, 0, 0.05);
+    pointer-events: none; /* 避免 Tooltip 阻擋滑鼠事件 */
+    margin-bottom: 8px; /* 與任務條的間距 */
+    min-width: 150px;
+    text-align: left;
+}
+
+/* 小三角箭頭 */
+.scheduler-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.85) transparent transparent transparent;
+}
+
+/* 滑鼠懸停時顯示 */
+.scheduler-task:hover .scheduler-tooltip {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+.tooltip-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 4px;
+    font-size: 13px;
+}
+
+.tooltip-row {
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.85);
+}

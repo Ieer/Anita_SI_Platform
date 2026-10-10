@@ -1,0 +1,342 @@
+{
+    "root_locale": "zh-cn",
+    "topic": "access",
+    "contents": {
+        "支付页-页面": {
+            "en-us": "Pay Page Show"
+        },
+        "RPA调度中心": {
+            "en-us": "RPA Scheduler"
+        },
+        "权限元": {
+            "en-us": "Access Metadata"
+        },
+        "首页": {
+            "en-us": "Home"
+        },
+        "仪表盘": {
+            "en-us": "DashBoard"
+        },
+        "工作台": {
+            "en-us": "Workbench"
+        },
+        "监控页": {
+            "en-us": "Monitor"
+        },
+        "权限管理": {
+            "en-us": "Access Mgmt"
+        },
+        "团队管理": {
+            "en-us": "Group Mgmt"
+        },
+        "角色管理": {
+            "en-us": "Role Mgmt"
+        },
+        "用户管理": {
+            "en-us": "User Mgmt"
+        },
+        "团队授权": {
+            "en-us": "Group Auth"
+        },
+        "个人页": {
+            "en-us": "Person Page"
+        },
+        "个人信息": {
+            "en-us": "Person Info"
+        },
+        "个人中心": {
+            "en-us": "Account Center"
+        },
+        "个人资料": {
+            "en-us": "Profile"
+        },
+        "个人设置": {
+            "en-us": "Person Setting"
+        },
+        "用户名/全名不能为空": {
+            "en-us": "username/fullname can not be empty"
+        },
+        "用户更新成功": {
+            "en-us": "User updated successfully"
+        },
+        "编辑": {
+            "en-us": "Edit"
+        },
+        "删除": {
+            "en-us": "Delete"
+        },
+        "用户更新失败": {
+            "en-us": "User update failed"
+        },
+        "请填写名用户名": {
+            "en-us": "Please fill in the username"
+        },
+        "该用户名名可用": {
+            "en-us": "The username is available"
+        },
+        "该用户名已存在": {
+            "en-us": "The username already exists"
+        },
+        "用户名/全名/密码不能为空": {
+            "en-us": "username/fullname/password can not be empty"
+        },
+        "用户添加成功": {
+            "en-us": "User added successfully"
+        },
+        "用户添加失败": {
+            "en-us": "User add failed"
+        },
+        "用户删除成功": {
+            "en-us": "User deleted successfully"
+        },
+        "用户删除失败": {
+            "en-us": "User delete failed"
+        },
+        "添加用户": {
+            "en-us": "Add User"
+        },
+        "用户名": {
+            "en-us": "username"
+        },
+        "全名": {
+            "en-us": "fullname"
+        },
+        "用户状态": {
+            "en-us": "status"
+        },
+        "用户描述": {
+            "en-us": "remark"
+        },
+        "性别": {
+            "en-us": "sex"
+        },
+        "邮箱": {
+            "en-us": "email"
+        },
+        "电话号码": {
+            "en-us": "phone"
+        },
+        "更新时间": {
+            "en-us": "update time"
+        },
+        "更新人": {
+            "en-us": "updater"
+        },
+        "创建时间": {
+            "en-us": "create time"
+        },
+        "创建人": {
+            "en-us": "creater"
+        },
+        "操作": {
+            "en-us": "action"
+        },
+        "角色": {
+            "en-us": "role"
+        },
+        "更新用户": {
+            "en-us": "Update User"
+        },
+        "权限更新成功": {
+            "en-us": "Access updated successfully"
+        },
+        "权限更新失败": {
+            "en-us": "Access update failed"
+        },
+        "团队更新成功": {
+            "en-us": "Group updated successfully"
+        },
+        "团队更新失败": {
+            "en-us": "Group updated failed"
+        },
+        "请填写团队名": {
+            "en-us": "Please fill in the group name"
+        },
+        "该团队名可用": {
+            "en-us": "The group name is available"
+        },
+        "该团队名已存在": {
+            "en-us": "The group name already exists"
+        },
+        "团队名不能为空": {
+            "en-us": "group name can not be empty"
+        },
+        "团队添加成功": {
+            "en-us": "Group added successfully"
+        },
+        "团队添加失败": {
+            "en-us": "Group added failed"
+        },
+        "团队删除成功": {
+            "en-us": "Group deleted successfully"
+        },
+        "团队删除失败": {
+            "en-us": "Group deleted failed"
+        },
+        "角色更新成功": {
+            "en-us": "Role updated successfully"
+        },
+        "角色更新失败": {
+            "en-us": "Role update failed"
+        },
+        "角色删除成功": {
+            "en-us": "Role deleted successfully"
+        },
+        "角色删除失败": {
+            "en-us": "Role delete failed"
+        },
+        "请填写角色名": {
+            "en-us": "Please fill in the role name"
+        },
+        "该角色名可用": {
+            "en-us": "The role name is available"
+        },
+        "该角色名已存在": {
+            "en-us": "The role name already exists"
+        },
+        "角色名不能为空": {
+            "en-us": "role name can not be empty"
+        },
+        "角色添加成功": {
+            "en-us": "Role added successfully"
+        },
+        "角色添加失败": {
+            "en-us": "Role added failed"
+        },
+        "男": {
+            "en-us": "Male"
+        },
+        "女": {
+            "en-us": "Female"
+        },
+        "未知": {
+            "en-us": "Unknown"
+        },
+        "团队名称": {
+            "en-us": "group name"
+        },
+        "团队状态": {
+            "en-us": "group status"
+        },
+        "团队描述": {
+            "en-us": "group remark"
+        },
+        "用户全名": {
+            "en-us": "fullname"
+        },
+        "用户角色": {
+            "en-us": "role"
+        },
+        "绑定角色": {
+            "en-us": "bind role"
+        },
+        "密码": {
+            "en-us": "password"
+        },
+        "您确定要删除用户 ": {
+            "en-us": "Are you sure to delete user "
+        },
+        "添加团队": {
+            "en-us": "Add Group"
+        },
+        "管理员": {
+            "en-us": "Admin"
+        },
+        "成员": {
+            "en-us": "Member"
+        },
+        "您确定要删除团队 ": {
+            "en-us": "Are you sure to delete group "
+        },
+        "更新团队": {
+            "en-us": "Update Group"
+        },
+        "添加角色": {
+            "en-us": "Add Role"
+        },
+        "角色名称": {
+            "en-us": "Role name"
+        },
+        "角色状态": {
+            "en-us": "Role status"
+        },
+        "角色描述": {
+            "en-us": "Role remark"
+        },
+        "菜单权限": {
+            "en-us": "Menu Access"
+        },
+        "角色编辑": {
+            "en-us": "Role Edit"
+        },
+        "您确定要删除角色 ": {
+            "en-us": "Are you sure to delete role "
+        },
+        "消息管理": {
+            "en-us": "Message Mgmt"
+        },
+        "公告管理": {
+            "en-us": "Announcement"
+        },
+        "公告管理-页面": {
+            "en-us": "Announcement Mgmt Show"
+        },
+        "任务中心": {
+            "en-us": "Task Center"
+        },
+        "任务管理": {
+            "en-us": "Task Mgmt"
+        },
+        "任务管理-页面": {
+            "en-us": "Task Mgmt Show"
+        },
+        "系统设置": {
+            "en-us": "System Setting"
+        },
+        "通知接口": {
+            "en-us": "Notify Api"
+        },
+        "通知接口-页面": {
+            "en-us": "Notify Api Show"
+        },
+        "任务日志": {
+            "en-us": "Task Log"
+        },
+        "任务日志-页面": {
+            "en-us": "Task Log Show"
+        },
+        "监听接口": {
+            "en-us": "Listen Api"
+        },
+        "监听接口-页面": {
+            "en-us": "Listen Api Show"
+        },
+        "应用案例": {
+            "en-us": "App Example"
+        },
+        "应用1": {
+            "en-us": "Application1"
+        },
+        "应用1-基础权限": {
+            "en-us": "Application1-BaseAccess"
+        },
+        "应用1-权限1": {
+            "en-us": "Application1-Access1"
+        },
+        "应用1-权限2": {
+            "en-us": "Application1-Access2"
+        },
+        "应用2": {
+            "en-us": "Application2"
+        },
+        "应用2-基础权限": {
+            "en-us": "Application2-BaseAccess"
+        },
+        "应用2-权限1": {
+            "en-us": "Application2-Access1"
+        },
+        "应用2-权限2": {
+            "en-us": "Application2-Access2"
+        }
+    }
+}

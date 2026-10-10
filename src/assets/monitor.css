@@ -1,0 +1,53 @@
+.system-monitor { color: var(--platform-ink); padding: 6px 2px 28px; min-width: 0; font-variant-numeric: tabular-nums; }
+.monitor-heading, .monitor-controls, .monitor-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.monitor-heading { margin-bottom: 18px; flex-wrap: wrap; }
+.system-monitor h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.system-monitor h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.monitor-controls { color: var(--platform-muted); font-size: 11px; flex-wrap: wrap; justify-content: flex-end; }
+.monitor-controls button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--platform-border); border-radius: 5px; background: var(--platform-surface); color: var(--platform-muted); cursor: pointer; }
+.monitor-controls button:hover, .monitor-controls button[aria-pressed="true"] { background: var(--platform-accent-soft); color: var(--platform-accent); border-color: var(--platform-border); }
+.monitor-controls button:focus-visible { outline: 2px solid var(--platform-accent); outline-offset: 2px; }
+.monitor-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-height: 128px; margin-bottom: 16px; }
+.monitor-metric { --meter-color: var(--platform-accent); display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 16px 18px; border: 1px solid var(--platform-border); border-radius: 6px; background: var(--platform-surface); }
+.monitor-metric-label { font-size: 12px; color: var(--platform-muted); }
+.monitor-metric-value { font-size: 27px; line-height: 1.15; font-weight: 600; overflow-wrap: anywhere; }
+.monitor-metric-note { font-size: 11px; color: var(--platform-muted); overflow-wrap: anywhere; }
+.monitor-meter { height: 4px; width: 100%; background: var(--platform-raised); overflow: hidden; border-radius: 2px; }
+.monitor-meter > div { height: 100%; background: var(--meter-color); }
+.monitor-tone-warning { --meter-color: var(--platform-warning); border-top: 2px solid var(--platform-warning); }
+.monitor-tone-danger { --meter-color: var(--platform-danger); border-top: 2px solid var(--platform-danger); }
+.monitor-tone-danger .monitor-metric-value { color: var(--platform-danger); }
+.monitor-activity { display: grid; grid-template-columns: minmax(0, 2fr) minmax(250px, 1fr); gap: 20px; margin-bottom: 20px; background: var(--platform-surface); border-block: 1px solid var(--platform-border); padding: 16px; }
+.monitor-trend-section, .monitor-detail { min-width: 0; }
+.monitor-activity .monitor-detail { border-left: 1px solid var(--platform-border); padding-left: 20px; }
+.monitor-section-heading { margin-bottom: 12px; flex-wrap: wrap; }
+.monitor-section-note { color: var(--platform-muted); font-size: 11px; }
+.monitor-detail h3 { margin-bottom: 12px; }
+.system-monitor .ant-descriptions-item-label { color: var(--platform-muted); font-size: 12px; min-width: 110px; }
+.system-monitor .ant-descriptions-item-content { color: var(--platform-ink); font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
+.system-monitor .ant-descriptions-row > td { padding-bottom: 9px; }
+.monitor-disks { padding: 16px; background: var(--platform-surface); border-block: 1px solid var(--platform-border); margin-bottom: 20px; min-width: 0; }
+.monitor-table-scroll { overflow-x: auto; scrollbar-width: thin; }
+.monitor-table-scroll .ant-table { min-width: 940px; font-size: 12px; }
+.system-monitor .ant-table-thead > tr > th { background: var(--platform-raised); color: var(--platform-muted); font-weight: 500; white-space: nowrap; }
+.system-monitor .ant-table-cell { overflow-wrap: anywhere; }
+.system-monitor .ant-progress { min-width: 115px; }
+.monitor-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; background: var(--platform-surface); border-top: 1px solid var(--platform-border); padding: 0 16px; }
+.monitor-details .monitor-detail { padding: 16px 0; border-bottom: 1px solid var(--platform-border); }
+@media (max-width: 1050px) {
+    .monitor-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .monitor-activity { grid-template-columns: minmax(0, 1fr); }
+    .monitor-activity .monitor-detail { border-left: 0; border-top: 1px solid var(--platform-border); padding: 16px 0 0; }
+}
+@media (max-width: 600px) {
+    .monitor-heading { gap: 8px; }
+    .system-monitor h2 { font-size: 18px; }
+    .monitor-controls { justify-content: flex-start; gap: 8px; }
+    .monitor-controls > span { font-size: 10px; }
+    .monitor-summary { gap: 8px; }
+    .monitor-metric { padding: 12px; }
+    .monitor-metric-value { font-size: 23px; }
+    .monitor-details { grid-template-columns: minmax(0, 1fr); }
+    .monitor-activity, .monitor-disks { padding: 12px; }
+    .monitor-details { padding: 0 12px; }
+}

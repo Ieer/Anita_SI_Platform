@@ -1,0 +1,162 @@
+{
+    "root_locale": "zh-cn",
+    "contents": {
+        "外观": {"en-us": "Appearance"},
+        "显示模式": {"en-us": "Color mode"},
+        "日间": {"en-us": "Light"},
+        "夜间": {"en-us": "Dark"},
+        "跟随系统": {"en-us": "System"},
+        "配色": {"en-us": "Palette"},
+        "青绿": {"en-us": "Teal"},
+        "蓝色": {"en-us": "Blue"},
+        "玫红": {"en-us": "Rose"},
+        "高对比": {"en-us": "High contrast"},
+        "编辑": {
+            "en-us": "Edit"
+        },
+        "删除": {
+            "en-us": "Delete"
+        },
+        "操作": {
+            "en-us": "Action"
+        },
+        "确定": {
+            "en-us": "Ok"
+        },
+        "取消": {
+            "en-us": "Cancel"
+        },
+        "确认要删除？": {
+            "en-us": "Are you sure to delete?"
+        },
+        "启用": {
+            "en-us": "Enable"
+        },
+        "停用": {
+            "en-us": "Disable"
+        },
+        "刷新": {
+            "en-us": "Refresh"
+        },
+        "全屏": {
+            "en-us": "Full Screen"
+        },
+        "新页面打开": {
+            "en-us": "Open in New Page"
+        },
+        "触发器": {
+            "en-us": "Trigger"
+        },
+        "下次执行": {
+            "en-us": "Next Run"
+        },
+        "状态": {
+            "en-us": "Status"
+        },
+        "下一步动作": {
+            "en-us": "Next Action"
+        },
+        "运行类型": {
+            "en-us": "Run Type"
+        },
+        "脚本类型": {
+            "en-us": "Script Type"
+        },
+        "超时秒数": {
+            "en-us": "Timeout (seconds)"
+        },
+        "日视图": {
+            "en-us": "Day"
+        },
+        "周视图": {
+            "en-us": "Week"
+        },
+        "月视图": {
+            "en-us": "Month"
+        },
+        "视图": {
+            "en-us": "View"
+        },
+        "范围": {
+            "en-us": "Range"
+        },
+        "时长": {
+            "en-us": "Duration"
+        },
+        "任务视图": {
+            "en-us": "Task View"
+        },
+        "新建任务": {
+            "en-us": "Create Task"
+        },
+        "保存": {
+            "en-us": "Save"
+        },
+        "禁用": {
+            "en-us": "Disabled"
+        },
+        "成功": {
+            "en-us": "Success"
+        },
+        "失败": {
+            "en-us": "Failed"
+        },
+        "运行中": {
+            "en-us": "Running"
+        },
+        "待处理": {
+            "en-us": "Pending"
+        },
+        "立即刷新": {
+            "en-us": "Refresh Now"
+        },
+        "自动重跑": {
+            "en-us": "Retry Automatically"
+        },
+        "任务名称": {
+            "en-us": "Task Name"
+        },
+        "今天": {
+            "en-us": "Today"
+        },
+        "状态总览": {
+            "en-us": "Status Overview"
+        },
+        "甘特图": {
+            "en-us": "Gantt Chart"
+        },
+        "任务列表": {
+            "en-us": "Task List"
+        },
+        "通知渠道": {
+            "en-us": "Notification Channels"
+        },
+        "脚本内容": {
+            "en-us": "Script Content"
+        },
+        "任务类型": {
+            "en-us": "Task Type"
+        },
+        "任务状态": {
+            "en-us": "Task Status"
+        },
+        "上月": {
+            "en-us": "Previous Month"
+        },
+        "下月": {
+            "en-us": "Next Month"
+        },
+        "任务加载失败": {
+            "en-us": "Failed to Load Tasks"
+        },
+        "job_id（可留空自动生成）": {
+            "en-us": "job_id (leave blank to generate automatically)"
+        },
+        "在此输入脚本内容": {
+            "en-us": "Enter the script here"
+        },
+        "变量抽取名称，逗号分隔": {
+            "en-us": "Variable extraction names, separated by commas"
+        }
+    }
+}

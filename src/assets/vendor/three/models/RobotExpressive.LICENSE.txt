@@ -1,0 +1,14 @@
+RobotExpressive
+
+Model by Tomas Laulhe (Quaternius): https://www.patreon.com/quaternius
+Modifications by Don McCurdy: https://donmccurdy.com/
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Pinned source (Three.js r180):
+https://github.com/mrdoob/three.js/tree/r180/examples/models/gltf/RobotExpressive
+
+Upstream modifications: added facial expression morph targets, converted with
+FBX2GLTF, removed duplicate materials and reduced material metalness.
+The local fallback PNG is rendered from the same CC0 model.
+Three.js and its GLTFLoader/BufferGeometryUtils are covered by ../LICENSE.

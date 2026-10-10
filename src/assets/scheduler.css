@@ -1,0 +1,211 @@
+/* scheduler.css - 從 task_view_app/assets/css/scheduler.css 複製，可根據實際需要擴充 */
+
+.scheduler-container {
+    overflow-x: auto;
+    background: #f7f7f7;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    margin-bottom: 16px;
+}
+.scheduler-header {
+    display: flex;
+    position: relative;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    font-weight: bold;
+    z-index: 2;
+    height: 34px;               /* 固定標頭高度，與程式 HEADER_HEIGHT 對齊 */
+    align-items: center;         /* 垂直置中內容 */
+    box-sizing: border-box;
+}
+.scheduler-header-cell {
+    flex: 0 0 160px;
+    text-align: center;
+    padding: 0;                  /* 去除上下 padding 以固定總高度 */
+    height: 34px;                /* 與標頭保持一致 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #e0e0e0;
+    background: #fafafa;
+    box-sizing: border-box;
+}
+.scheduler-header-cell.weekend {
+    background: #fbeee6;
+}
+.scheduler-header-cell.today {
+    background: #e6f7ff;
+}
+.scheduler-time-label {
+    flex: 0 0 60px;              /* 固定寬度 60px */
+    width: 60px;
+    text-align: right;
+    padding: 0 8px 0 0;          /* 去除上下 padding，與標頭高度一致 */
+    height: 34px;
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+    box-sizing: border-box;
+    justify-content: flex-end;   /* 內容靠右對齊 */
+}
+.scheduler-row {
+    display: flex;
+    position: relative;
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    box-sizing: border-box;
+}
+.scheduler-hour {
+    flex: 0 0 60px;              /* 固定寬度 60px */
+    width: 60px;
+    text-align: right;
+    padding: 2px 8px 2px 0;
+    color: #888;
+    font-size: 12px;
+    background: #fff;
+    border-right: 1px solid #e0e0e0;
+    box-sizing: border-box;
+}
+.scheduler-grid {
+    display: flex;
+    flex: 1 1 auto;
+    position: relative;
+    box-sizing: border-box;
+}
+.scheduler-grid-column {
+    flex: 0 0 160px;
+    position: relative;
+    border-right: 1px solid #f0f0f0;
+    height: 26px;
+    box-sizing: border-box;
+}
+.scheduler-grid-column.weekend-column {
+    background: #fbeee6;
+}
+.scheduler-grid-column.today-column {
+    background: #e6f7ff;
+}
+
+/* 優化：使用 CSS 漸變繪製刻度線，替代大量的 DOM 節點 */
+.grid-lines-gradient {
+    background-image: linear-gradient(to bottom, 
+        transparent 24%, #f0f0f0 25%, transparent 26%, 
+        transparent 49%, #f0f0f0 50%, transparent 51%, 
+        transparent 74%, #f0f0f0 75%, transparent 76%, 
+        transparent 99%, #e0e0e0 100%);
+    background-size: 100% 100%;
+}
+
+/* 針對週末和今天的背景色疊加漸變 */
+.scheduler-grid-column.weekend-column.grid-lines-gradient {
+    background-image: linear-gradient(to bottom, 
+        transparent 24%, #e8dcd5 25%, transparent 26%, 
+        transparent 49%, #e8dcd5 50%, transparent 51%, 
+        transparent 74%, #e8dcd5 75%, transparent 76%, 
+        transparent 99%, #d0d0d0 100%),
+        linear-gradient(#fbeee6, #fbeee6); /* 背景色 */
+}
+
+.scheduler-grid-column.today-column.grid-lines-gradient {
+    background-image: linear-gradient(to bottom, 
+        transparent 24%, #d6e7ef 25%, transparent 26%, 
+        transparent 49%, #d6e7ef 50%, transparent 51%, 
+        transparent 74%, #d6e7ef 75%, transparent 76%, 
+        transparent 99%, #c0d0d0 100%),
+        linear-gradient(#e6f7ff, #e6f7ff); /* 背景色 */
+}
+
+.quarter-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #f0f0f0;
+    z-index: 1;
+}
+.hour-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #e0e0e0;
+    z-index: 2;
+}
+.scheduler-task {
+    position: absolute;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 13px;
+    padding: 2px 6px;
+    /* overflow: hidden;  <-- 移除此行，允許 Tooltip 溢出顯示 */
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    border: 2px solid #fff;
+    z-index: 10;
+    transition: box-shadow 0.2s;
+    /* 若實際 header 高度與 34px 不同，使用 delta 自動校正 */
+    transform: translateY(var(--scheduler-header-delta, 0px));
+}
+
+/* 新增：內部內容容器，負責處理文本溢出 */
+.task-content {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.scheduler-task:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    border-color: #1890ff;
+    z-index: 1000; /* 懸停時大幅提高層級，確保 Tooltip 蓋過其他元素 */
+}
+.task-interval {
+    background: #1890ff;
+}
+.task-cron {
+    background: #722ed1;
+}
+.task-date {
+    background: #13c2c2;
+}
+.task-listen {
+    background: #fa8c16;
+}
+.status-enabled {
+    border-color: #52c41a;
+}
+.status-disabled {
+    border-color: #ff4d4f;
+}
+.status-running {
+    border-color: #1890ff;
+}
+.status-pending {
+    border-color: #faad14;
+}
+.current-time-line {
+    position: absolute;
+    top: 0; /* 由 translateY 動態校正 */
+    bottom: 0;
+    width: 2px;
+    background: #ff4d4f;
+    z-index: 20;
+    pointer-events: none;
+    transform: translateY(var(--scheduler-header-delta, 0px));
+}
+.scheduler-inner {
+    position: relative;
+    min-width: 100%;
+}
+.scheduler-view-type {
+    color: #722ed1;
+    font-size: 15px;
+}
+
+/* 空狀態提示也同步位移，避免與 header 重疊 */
+.scheduler-empty {
+    transform: translateY(var(--scheduler-header-delta, 0px));
+}

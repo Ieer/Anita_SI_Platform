@@ -1,0 +1,169 @@
+{
+    "root_locale": "zh-cn",
+    "topic": "dashboard",
+    "contents": {
+        "域名": {
+            "en-us": "hostname"
+        },
+        "系统类型": {
+            "en-us": "os name"
+        },
+        "计算机名": {
+            "en-us": "computer name"
+        },
+        "核心架构": {
+            "en-us": "os arch"
+        },
+        "型号": {
+            "en-us": "type"
+        },
+        "逻辑核数": {
+            "en-us": "logical cpu num"
+        },
+        "空闲率": {
+            "en-us": "free"
+        },
+        "总使用率": {
+            "en-us": "total usage percent"
+        },
+        "用户使用率": {
+            "en-us": "user usage percent"
+        },
+        "系统使用率": {
+            "en-us": "sys usage percent"
+        },
+        "总量": {
+            "en-us": "total"
+        },
+        "已用": {
+            "en-us": "usage"
+        },
+        "剩余": {
+            "en-us": "free"
+        },
+        "使用率": {
+            "en-us": "usage percent"
+        },
+        "Python版本": {
+            "en-us": "Python version"
+        },
+        "启动时间": {
+            "en-us": "setup time"
+        },
+        "运行时长": {
+            "en-us": "run duration"
+        },
+        "内存使用量": {
+            "en-us": "mem usage"
+        },
+        "你好，": {
+            "en-us": "Hello, "
+        },
+        "系统信息": {
+            "en-us": "System Info"
+        },
+        "进程运行状态": {
+            "en-us": "Process Status"
+        },
+        "设备名": {
+            "en-us": "device name"
+        },
+        "文件系统类型": {
+            "en-us": "filesystem name"
+        },
+        "总容量": {
+            "en-us": "total"
+        },
+        "可用": {
+            "en-us": "free"
+        },
+        "挂载点": {
+            "en-us": "mountpoint"
+        },
+        "磁盘状态": {
+            "en-us": "Disk Status"
+        },
+        "内存": {
+            "en-us": "Mem"
+        },
+        "系统监控": {"en-us": "System Monitor"},
+        "等待采样": {"en-us": "Waiting for sample"},
+        "暂停自动刷新": {"en-us": "Pause auto refresh"},
+        "恢复自动刷新": {"en-us": "Resume auto refresh"},
+        "立即刷新": {"en-us": "Refresh now"},
+        "资源趋势": {"en-us": "Resource Trends"},
+        "最近5分钟": {"en-us": "Last 5 minutes"},
+        "网络与磁盘 I/O": {"en-us": "Network & Disk I/O"},
+        "状态": {"en-us": "Status"},
+        "CPU 使用率": {"en-us": "CPU usage"},
+        "内存使用率": {"en-us": "Memory usage"},
+        "最高磁盘使用率": {"en-us": "Highest disk usage"},
+        "进程内存": {"en-us": "Process memory"},
+        "无法读取": {"en-us": "Unavailable"},
+        "空间紧张": {"en-us": "Low disk space"},
+        "注意容量": {"en-us": "Capacity warning"},
+        "正常": {"en-us": "Normal"},
+        "个磁盘": {"en-us": "disks"},
+        "容量预警": {"en-us": "capacity warnings"},
+        "主机名": {"en-us": "Hostname"},
+        "主机启动时间": {"en-us": "Host boot time"},
+        "主机运行时长": {"en-us": "Host uptime"},
+        "物理核数": {"en-us": "Physical cores"},
+        "当前频率": {"en-us": "Current frequency"},
+        "可用内存": {"en-us": "Available memory"},
+        "空闲内存": {"en-us": "Free memory"},
+        "交换内存总量": {"en-us": "Swap total"},
+        "交换内存已用": {"en-us": "Swap used"},
+        "交换内存使用率": {"en-us": "Swap usage"},
+        "进程 ID": {"en-us": "Process ID"},
+        "线程数": {"en-us": "Threads"},
+        "占主机内存": {"en-us": "Host memory share"},
+        "累计接收": {"en-us": "Total received"},
+        "累计发送": {"en-us": "Total sent"},
+        "网络错误": {"en-us": "Network errors"},
+        "网络丢包": {"en-us": "Dropped packets"},
+        "累计磁盘读取": {"en-us": "Total disk read"},
+        "累计磁盘写入": {"en-us": "Total disk written"},
+        "自动刷新已暂停": {"en-us": "Auto refresh paused"},
+        "每5秒刷新": {"en-us": "Refresh every 5s"},
+        "新会话": {"en-us": "New conversation"},
+        "查询任务": {"en-us": "Query tasks"},
+        "读取日志": {"en-us": "Read logs"},
+        "提议运行": {"en-us": "Propose execution"},
+        "完成": {"en-us": "Complete"},
+        "不可用": {"en-us": "Unavailable"},
+        "未找到": {"en-us": "Not found"},
+        "待审批": {"en-us": "Pending approval"},
+        "你": {"en-us": "You"},
+        "请求失败": {"en-us": "Request failed"},
+        "工具记录": {"en-us": "Tool trace"},
+        "已拒绝": {"en-us": "Rejected"},
+        "已过期": {"en-us": "Expired"},
+        "校验阻断": {"en-us": "Validation blocked"},
+        "提交中或中断待核对": {"en-us": "Submitting or interrupted; review required"},
+        "调度器已接收": {"en-us": "Accepted by scheduler"},
+        "提交结果未知，待核对": {"en-us": "Submission result unknown; review required"},
+        "执行审批": {"en-us": "Execution approval"},
+        "任务版本": {"en-us": "Task version"},
+        "有效期至": {"en-us": "Expires at"},
+        "确认时间": {"en-us": "Decision time"},
+        "将以调度服务账户在本机运行已有脚本，可能写入文件或访问外部系统。": {
+            "en-us": "The existing script will run locally under the scheduler service account and may write files or access external systems."
+        },
+        "已核对任务脚本及影响": {"en-us": "I reviewed the task script and its impact"},
+        "批准并运行": {"en-us": "Approve and run"},
+        "拒绝": {"en-us": "Reject"},
+        "打开 Agent 对话": {"en-us": "Open Agent chat"},
+        "放大对话": {"en-us": "Expand chat"},
+        "收起对话": {"en-us": "Close chat"},
+        "选择会话": {"en-us": "Select a conversation"},
+        "新建会话": {"en-us": "New conversation"},
+        "当前会话": {"en-us": "Current conversation"},
+        "模型未配置": {"en-us": "Model not configured"},
+        "输入消息…": {"en-us": "Enter a message…"},
+        "会话": {"en-us": "Conversation"},
+        "消息": {"en-us": "Message"},
+        "允许将脱敏日志发送给模型": {"en-us": "Allow sending redacted logs to the model"},
+        "发送": {"en-us": "Send"}
+    }
+}

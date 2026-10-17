@@ -85,18 +85,12 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             page = context.new_page()
             page.on('pageerror', lambda error: page_errors.append(str(error)))
             video = page.video
-            page.route(
-                url.rstrip('/') + '/_playwright_demo_intro',
-                lambda route: route.fulfill(
-                    content_type='text/html',
-                    body=INTRO_HTML.replace('__BASE__', url.rstrip('/')),
-                ),
-            )
-            page.goto(url.rstrip('/') + '/_playwright_demo_intro')
-            app = page.frame_locator('#demo-app')
+            page.goto(url.rstrip('/') + '/dashboard_/monitor')
+            app = page
             app.locator('#platform-demo-banner').wait_for(timeout=30000)
-            app.locator(
-                '#system-monitor:visible #monitor-summary .monitor-metric-value:visible').first.wait_for(timeout=45000)
+            app.locator('#system-monitor').wait_for(timeout=45000)
+            app.locator('#monitor-summary .monitor-metric-value').first.wait_for(
+                state='attached', timeout=45000)
             for metric in ['93.0%', '86.0%', '92.0%']:
                 app.locator('#monitor-summary').get_by_text(metric, exact=True).wait_for(timeout=15000)
             app.locator('#monitor-disk-desc .ant-table-row:not(.ant-table-measure-row)').filter(
@@ -106,18 +100,11 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             plot.wait_for(state='visible', timeout=15000)
             page.wait_for_function(
                 """() => {
-                    const plot = document.querySelector('#demo-app')?.contentDocument
-                        ?.querySelector('#monitor-trend .js-plotly-plot');
+                    const plot = document.querySelector('#monitor-trend .js-plotly-plot');
                     return plot?.data?.some(trace => Array.isArray(trace.x) && trace.x.length > 0);
                 }""",
                 timeout=15000,
             )
-            page.locator('#demo-intro').evaluate("node => node.classList.add('is-hidden')")
-            page.wait_for_function(
-                "() => getComputedStyle(document.querySelector('#demo-intro')).opacity === '0'",
-                timeout=3000,
-            )
-            page.wait_for_timeout(700)
             app.locator('#monitor-refresh').click()
             for _ in range(60):
                 point_count = plot.evaluate(
@@ -130,13 +117,24 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
 
             app.locator('#agent-launcher').click()
             app.locator('#agent-panel').wait_for(state='visible', timeout=15000)
+            page_agent = app.locator('#page-agent-launcher')
+            page_agent.wait_for(state='visible', timeout=15000)
+            page_agent.click()
+            app.locator('#page-agent-status.page-agent-status-ready').wait_for(
+                state='visible', timeout=15000)
             page.wait_for_function(
-                "() => { const button = document.querySelector('#demo-app')?.contentDocument?.querySelector('#agent-send'); return button && !button.disabled; }",
+                "() => document.querySelector('#page-agent-status')?.classList.contains('page-agent-status-ready')",
+                timeout=15000,
+            )
+            page.wait_for_timeout(1200)
+
+            page.wait_for_function(
+                "() => { const button = document.querySelector('#agent-send'); return button && !button.disabled; }",
                 timeout=20000,
             )
             app.locator('#agent-new-conversation').click()
             page.wait_for_function(
-                "() => { const button = document.querySelector('#demo-app')?.contentDocument?.querySelector('#agent-send'); return button && !button.disabled; }",
+                "() => { const button = document.querySelector('#agent-send'); return button && !button.disabled; }",
                 timeout=15000,
             )
             page.wait_for_timeout(400)
@@ -147,7 +145,7 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             send.click()
             app.locator('.agent-message-assistant').last.wait_for(state='visible', timeout=20000)
             page.wait_for_function(
-                "() => [...(document.querySelector('#demo-app')?.contentDocument?.querySelectorAll('.agent-message-assistant') || [])].some(node => node.innerText.includes('93%'))",
+                "() => [...document.querySelectorAll('.agent-message-assistant')].some(node => node.innerText.includes('93%'))",
                 timeout=15000,
             )
             app.locator('.agent-panel-scroll').evaluate('(node) => { node.scrollTop = node.scrollHeight; }')
@@ -157,7 +155,7 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             send.click()
             app.locator('.agent-message-assistant').last.wait_for(state='visible', timeout=15000)
             page.wait_for_function(
-                "() => [...(document.querySelector('#demo-app')?.contentDocument?.querySelectorAll('.agent-message-assistant') || [])].some(node => node.innerText.includes('\u6ca1\u6709\u8bfb\u53d6\u4efb\u4f55\u65e5\u5fd7'))",
+                "() => [...document.querySelectorAll('.agent-message-assistant')].some(node => node.innerText.includes('\u6ca1\u6709\u8bfb\u53d6\u4efb\u4f55\u65e5\u5fd7'))",
                 timeout=15000,
             )
             app.locator('.agent-panel-scroll').evaluate('(node) => { node.scrollTop = node.scrollHeight; }')
@@ -168,7 +166,7 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             send.click()
             app.locator('.agent-message-assistant').last.wait_for(state='visible', timeout=15000)
             page.wait_for_function(
-                "() => [...(document.querySelector('#demo-app')?.contentDocument?.querySelectorAll('.agent-message-assistant') || [])].some(node => node.innerText.includes('\u6700\u8fd1\u8fd0\u884c\u72b6\u6001\u4e3a failed'))",
+                "() => [...document.querySelectorAll('.agent-message-assistant')].some(node => node.innerText.includes('\u6700\u8fd1\u8fd0\u884c\u72b6\u6001\u4e3a failed'))",
                 timeout=15000,
             )
             app.locator('.agent-trace').last.wait_for(state='visible', timeout=10000)
@@ -179,7 +177,7 @@ def record_demo(url=DEFAULT_URL, output=DEFAULT_OUTPUT):
             send.click()
             app.locator('.agent-message-assistant').last.wait_for(state='visible', timeout=15000)
             page.wait_for_function(
-                "() => [...(document.querySelector('#demo-app')?.contentDocument?.querySelectorAll('.agent-message-assistant') || [])].some(node => node.innerText.includes('\u53ea\u63d0\u4f9b\u53ea\u8bfb\u5206\u6790'))",
+                "() => [...document.querySelectorAll('.agent-message-assistant')].some(node => node.innerText.includes('\u53ea\u63d0\u4f9b\u53ea\u8bfb\u5206\u6790'))",
                 timeout=15000,
             )
             if app.locator('#agent-approvals').inner_text().strip():

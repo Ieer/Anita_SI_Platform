@@ -80,8 +80,22 @@ def demo_agent_turn_events(prompt, menu_access, history=(), allow_log_export=Fal
     result = demo_agent_turn(prompt, menu_access, history, allow_log_export, access_provider)
     result.setdefault('remote_conversation_id', None)
     result.setdefault('provider_state', None)
+    settings = kwargs.get('resolved_settings')
+    if settings is not None and settings.provider == 'enterprise_models':
+        result['provider_state'] = {
+            'provider': 'enterprise_models',
+            'credential_version': settings.provider_options.get('_credential_version'),
+            'chatId': 'demo-only-chat', 'parentId': 'demo-only-turn',
+        }
     yield AgentStreamEvent('delta', result['answer'])
     return result
+
+
+def demo_test_provider_connection(settings, client=None, access=None):
+    settings = settings.for_access(access)
+    settings.validate()
+    settings.check_current(access)
+    return {'model': DEMO_AGENT_MODEL, 'message': '离线演示检查通过，未请求外部服务。'}
 
 
 def serve(port=8097):
@@ -94,7 +108,8 @@ def serve(port=8097):
         stack.enter_context(patch.object(conn, 'sqlite_db', database))
         stack.enter_context(patch.object(conn, 'db', return_value=database))
         conn.create_rds_table()
-        conn.init_rds_data()
+        import secrets
+        conn.init_rds_data(initial_admin_password=secrets.token_urlsafe(32))
         from database.sql_db.repositories import task_center_repository
         from database.sql_db.entity.table_user import SysGroup, SysGroupUser, SysUser, SysUserRole
         from common import task_center
@@ -204,25 +219,39 @@ def serve(port=8097):
         }))
         from common.utilities import util_startup
 
-        startup = {'schema': 1, 'revision': 0, 'scheduler_mode': 'paired_paused'}
+        startup = {'schema': 1, 'revision': 0, 'scheduler_mode': 'paired_paused', 'keep_awake': False}
 
         def save_demo_policy(mode, revision, *args, **kwargs):
             if revision != startup['revision']:
                 raise util_startup.StartupConfigError('Demo startup policy changed')
             if mode not in util_startup.STARTUP_MODES:
                 raise util_startup.StartupConfigError('Invalid demo startup policy')
-            startup.update(scheduler_mode=mode, revision=revision + 1)
+            keep_awake = kwargs.get('keep_awake', startup['keep_awake'])
+            if not isinstance(keep_awake, bool):
+                raise util_startup.StartupConfigError('Invalid demo keep-awake setting')
+            startup.update(scheduler_mode=mode, revision=revision + 1, keep_awake=keep_awake)
             return dict(startup)
 
         stack.enter_context(patch.object(util_startup, 'load_startup_config', side_effect=lambda *args, **kwargs: dict(startup)))
         stack.enter_context(patch.object(util_startup, 'save_scheduler_mode', side_effect=save_demo_policy))
+        token_file = Path(folder) / 'enterprise-login.json'
+        token_file.write_text(json.dumps({
+            'access_token': 'demo-only-enterprise-access',
+            'token_expiry': (now.astimezone() + timedelta(days=1)).isoformat(),
+        }), encoding='utf-8')
         stack.enter_context(patch.dict(os.environ, {
             'SMART_AGENT_API_KEY': '', 'SMART_AGENT_MODEL': '', 'SMART_AGENT_RUN_ALLOWLIST': '[]',
-            'SMART_AGENT_DEMO_MODE': '1',
+            'SMART_AGENT_DEMO_MODE': '1', 'SMART_AGENT_PROVIDER': 'openai_compatible',
+            'SMART_AGENT_PROVIDER_MODULE': '',
+            'SMART_AGENT_ENTERPRISE_MODELS_OWNER': 'demo_admin',
+            'SMART_AGENT_ENTERPRISE_MODELS_TOKEN_FILE': str(token_file),
+            'SMART_AGENT_ENTERPRISE_MODELS_TOKEN_TIMEZONE': 'UTC',
+            'SMART_AGENT_ENTERPRISE_MODELS_ENDPOINT': 'https://models.demo.invalid/v1/chat/stream',
         }))
         from common.agent import ModelSettings
         import common.agent as agent_module
         from dash_callback.pages import agent_widget_c
+        from dash_callback.application.setting_ import agent_provider_c
         from dash_view.framework import agent_widget
 
         demo_settings = ModelSettings(api_key='', model=DEMO_AGENT_MODEL)
@@ -234,6 +263,8 @@ def serve(port=8097):
                                          side_effect=demo_agent_turn_events))
         stack.enter_context(patch.object(agent_widget_c, 'model_status', return_value=demo_model_status))
         stack.enter_context(patch.object(agent_widget, 'model_status', return_value=demo_model_status))
+        stack.enter_context(patch.object(agent_provider_c, 'test_provider_connection',
+                         side_effect=demo_test_provider_connection))
         stack.enter_context(patch.object(WindowsTasksManager, 'get_scheduled_tasks', side_effect=lambda: native_rows))
         def native_operation(path, operation):
             row = next(row for row in native_rows if row['TaskName'] == path)

@@ -87,13 +87,31 @@ def create_rds_table():
     )
 
 
-def init_rds_data():
+def init_rds_data(initial_admin_password=None):
     db_instance = db()
     from .entity.table_user import SysUser, SysUserRole, SysRole
     from datetime import datetime
-    import hashlib
+    import getpass
+    import os
+    import sys
+    from common.utilities.util_password import hash_password
 
     with db_instance.atomic():
+        existing_admin = SysUser.get_or_none(SysUser.user_name == 'admin')
+        password_hash = existing_admin.password_sha256 if existing_admin else None
+        if existing_admin is None:
+            password = initial_admin_password
+            if password is None:
+                password = os.environ.get('SMART_AGENT_INITIAL_ADMIN_PASSWORD')
+            if password is None and sys.stdin.isatty():
+                password = getpass.getpass('Initial admin password (16-1024 characters): ')
+                if password != getpass.getpass('Confirm initial admin password: '):
+                    raise ValueError('Initial admin passwords do not match')
+            if not isinstance(password, str) or not 16 <= len(password) <= 1024 or password.isspace():
+                raise ValueError(
+                    'A unique 16-1024 character initial admin password is required. '
+                    'Use an interactive terminal or SMART_AGENT_INITIAL_ADMIN_PASSWORD.')
+            password_hash = hash_password(password)
         SysRole.get_or_create(
             role_name='admin',
             defaults={
@@ -109,7 +127,7 @@ def init_rds_data():
             user_name='admin',
             defaults={
                 'user_full_name': '超级管理员',
-                'password_sha256': hashlib.sha256('admin123'.encode('utf-8')).hexdigest(),
+                'password_sha256': password_hash,
                 'user_status': True,
                 'user_sex': '未知',
                 'user_email': '',

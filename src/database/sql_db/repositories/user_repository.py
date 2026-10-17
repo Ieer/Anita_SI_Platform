@@ -9,6 +9,7 @@ import hashlib
 from peewee import DoesNotExist, fn, MySQLDatabase, SqliteDatabase, IntegrityError, JOIN, Case
 from common.utilities.util_logger import Log
 from common.utilities.util_menu_access import get_menu_access
+from common.utilities.util_password import hash_password, hash_password_digest, is_legacy_password, verify_password_digest
 from ..entity.table_user import SysUser, SysRoleAccessMeta, SysUserRole, SysGroupUser, SysRole, SysGroupRole, SysGroup
 
 logger = Log.get_logger(__name__)
@@ -31,10 +32,18 @@ def exists_user_name(user_name: str) -> bool:
 def user_password_verify(user_name: str, password_sha256: str) -> bool:
     """密码校验，排除未启用账号"""
     try:
-        SysUser.get((SysUser.user_name == user_name) & (SysUser.password_sha256 == password_sha256) & (SysUser.user_status == Status.ENABLE))
-        return True
+        user = SysUser.get((SysUser.user_name == user_name) & (SysUser.user_status == Status.ENABLE))
     except DoesNotExist:
         return False
+    stored = user.password_sha256
+    if not verify_password_digest(password_sha256, stored):
+        return False
+    if is_legacy_password(stored):
+        upgraded = hash_password_digest(password_sha256)
+        return SysUser.update(password_sha256=upgraded).where(
+            (SysUser.user_name == user_name) & (SysUser.password_sha256 == stored)
+            & (SysUser.user_status == Status.ENABLE)).execute() == 1
+    return True
 
 
 def get_all_access_meta_for_setup_check() -> List[str]:
@@ -159,7 +168,7 @@ def update_user(user_name, user_full_name, password, user_status: bool, user_sex
             user: SysUser = SysUser.get(SysUser.user_name == user_name)
             user.user_full_name = user_full_name
             if password:
-                user.password_sha256 = hashlib.sha256(password.encode('utf-8')).hexdigest()
+                user.password_sha256 = hash_password(password)
             user.user_status = user_status
             user.user_sex = user_sex
             user.user_email = user_email
@@ -314,7 +323,7 @@ def update_user_password(user_name: str, new_password: str, old_password: Option
     with database.atomic() as txn:
         try:
             user: SysUser = SysUser.get(SysUser.user_name == user_name)
-            user.password_sha256 = hashlib.sha256(new_password.encode('utf-8')).hexdigest()
+            user.password_sha256 = hash_password(new_password)
             user.update_by = user_name_op
             user.update_datetime = datetime.now()
             user.save()
@@ -384,7 +393,7 @@ def create_user(
             SysUser.create(
                 user_name=user_name,
                 user_full_name=user_full_name,
-                password_sha256=hashlib.sha256(password.encode('utf-8')).hexdigest(),
+                password_sha256=hash_password(password),
                 user_status=user_status,
                 user_sex=user_sex,
                 user_email=user_email,
@@ -823,7 +832,7 @@ def update_user_roles_from_group(user_name, group_name, roles_in_range):
             txn.commit()
             return True
         else:
-            logger.warning(f'用户{user_name_op}修改团队成员{user_name}权限时，出现异常: {e}', exc_info=True)
+            logger.warning(f'用户{user_name_op}修改团队成员{user_name}权限失败')
             txn.rollback()
             return False
 

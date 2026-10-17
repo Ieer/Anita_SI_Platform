@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,10 +29,12 @@ def serve_probe(port):
         stack.enter_context(patch.object(conn, 'sqlite_db', database))
         stack.enter_context(patch.object(conn, 'db', return_value=database))
         conn.create_rds_table()
-        conn.init_rds_data()
+        import secrets
+        conn.init_rds_data(initial_admin_password=secrets.token_urlsafe(32))
         from database.sql_db.entity.table_user import SysUser, SysUserRole
 
-        probe_users = ['ui_alice', 'ui_bob', 'ui_theme', 'ui_config', 'ui_member', 'ui_columbus', 'ui_locale', 'ui_i18n']
+        probe_users = ['ui_alice', 'ui_bob', 'ui_theme', 'ui_config', 'ui_member', 'ui_internal_agent',
+                   'ui_enterprise', 'ui_locale', 'ui_i18n']
         for owner in probe_users:
             values = dict(SysUser.get_by_id('admin').__data__)
             values.update(user_name=owner, user_full_name=owner)
@@ -52,7 +55,8 @@ def serve_probe(port):
         gate = threading.Event()
         calls = []
         submissions = []
-        columbus_calls = []
+        internal_agent_calls = []
+        enterprise_calls = []
         channel_test_calls = []
 
         def notification_test(**options):
@@ -146,29 +150,58 @@ def serve_probe(port):
 
         stack.enter_context(patch('common.utilities.util_apscheduler._add_job', side_effect=submit))
         import app as platform_app
-        from common.columbus_provider import ColumbusProvider, _tokens
+        from common.internal_agent_provider import InternalAgentProvider, _tokens
         from common.agent_providers import _PROVIDER_FACTORIES
 
-        def columbus_transport(request):
+        def internal_agent_transport(request):
             if request.url.host == 'login.microsoftonline.com':
                 return httpx.Response(200, json={
-                    'access_token': 'browser-columbus-token', 'token_type': 'Bearer', 'expires_in': 3600,
+                    'access_token': 'browser-internal_agent-token', 'token_type': 'Bearer', 'expires_in': 3600,
                 })
             payload = json.loads(request.content)
-            columbus_calls.append(payload)
+            internal_agent_calls.append(payload)
             text = payload['input'][0]['content'][0]['text']
             return httpx.Response(200, json={
-                'response': {'status': 'SUCCESS', 'model': 'browser-columbus-agent', 'output': [{
+                'response': {'status': 'SUCCESS', 'model': 'browser-internal_agent-agent', 'output': [{
                     'role': 'assistant', 'type': 'message',
-                    'content': [{'type': 'output_text', 'text': 'COLUMBUS REPLY: ' + text}],
+                    'content': [{'type': 'output_text', 'text': 'INTERNAL_AGENT REPLY: ' + text}],
                 }]},
                 'messages': [*payload['history'], {'role': 'user', 'content': text}],
             })
 
         _tokens.clear()
-        columbus_client = stack.enter_context(httpx.Client(transport=httpx.MockTransport(columbus_transport)))
+        internal_agent_client = stack.enter_context(httpx.Client(transport=httpx.MockTransport(internal_agent_transport)))
         stack.enter_context(patch.dict(_PROVIDER_FACTORIES, {
-            'columbus_agent': lambda settings, client=None: ColumbusProvider(settings, columbus_client),
+            'internal_agent': lambda settings, client=None: InternalAgentProvider(settings, internal_agent_client),
+        }))
+        from datetime import timedelta, timezone
+        from common.enterprise_models_provider import EnterpriseModelsProvider
+        from common.enterprise_models_credentials import PREFIX
+
+        token_file = Path(folder) / 'enterprise-token.dat'
+        token_file.write_text(json.dumps({
+            'access_token': 'browser-enterprise-fake-access', 'refresh_token': 'browser-unused-refresh',
+            'token_expiry': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        }), encoding='utf-8')
+        stack.enter_context(patch.dict(os.environ, {
+            PREFIX + 'TOKEN_FILE': str(token_file), PREFIX + 'TOKEN_TIMEZONE': 'UTC',
+            PREFIX + 'OWNER': 'ui_enterprise',
+            PREFIX + 'ENDPOINT': 'https://models.test.invalid/v1/chat/stream',
+        }))
+
+        def enterprise_transport(request):
+            payload = json.loads(request.content)
+            enterprise_calls.append(payload)
+            text = payload['prompt'].rsplit('\n\n', 1)[-1]
+            event = {'chatId': 'browser-chat', 'current': [{
+                'id': 'browser-parent', 'content': 'ENTERPRISE REPLY: ' + text,
+            }]}
+            return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                                  text=f'data: {json.dumps(event)}\n\ndata: [DONE]\n\n')
+
+        enterprise_client = stack.enter_context(httpx.Client(transport=httpx.MockTransport(enterprise_transport)))
+        stack.enter_context(patch.dict(_PROVIDER_FACTORIES, {
+            'enterprise_models': lambda settings, client=None: EnterpriseModelsProvider(settings, enterprise_client),
         }))
         from flask import jsonify, redirect, make_response
         from common.utilities.util_jwt import jwt_encode
@@ -189,7 +222,8 @@ def serve_probe(port):
         def probe_stats():
             return jsonify(calls=sum(call['model'] == 'ui-test-model' for call in calls),
                            models=[call['model'] for call in calls], submissions=len(submissions),
-                           columbus_history_lengths=[len(call['history']) for call in columbus_calls],
+                           internal_agent_history_lengths=[len(call['history']) for call in internal_agent_calls],
+                           enterprise_parents=[call.get('parentId') for call in enterprise_calls],
                            channel_test_calls=channel_test_calls,
                            conversations=len(agent_repository.list_conversations('ui_alice')))
 
@@ -287,6 +321,20 @@ class AgentBrowserTests(unittest.TestCase):
                         }''', arg={'mode': mode, 'palette': palette, 'contrast': contrast})
                         expect(page.locator('.platform-brand-wordmark')).to_have_css(
                             'filter', 'brightness(1.4)' if mode == 'dark' else 'brightness(0.5)')
+                        grid = page.locator('body').evaluate('''element => {
+                            const style = getComputedStyle(element, '::before');
+                            return {content: style.content, image: style.backgroundImage,
+                                pointerEvents: style.pointerEvents, animation: style.animationName};
+                        }''')
+                        if mode == 'dark' and contrast == 'normal':
+                            expect(page.locator('body')).to_have_css('background-color', 'rgb(21, 24, 25)')
+                            self.assertIn('conic-gradient', grid['image'])
+                            self.assertIn('192, 201, 205', grid['image'])
+                            expect(page.locator('#menu-collapse-sider')).to_have_css('border-top-color', 'rgb(57, 67, 70)')
+                            self.assertEqual(grid['pointerEvents'], 'none')
+                            self.assertEqual(grid['animation'], 'none')
+                        else:
+                            self.assertEqual(grid['content'], 'none')
                         self.assertEqual(baseline, page.evaluate(
                             "document.querySelector('#monitor-trend .js-plotly-plot').data.map(trace => trace.y)"))
                         expect(page.locator('#monitor-updated')).to_have_text(timestamp)
@@ -364,6 +412,8 @@ class AgentBrowserTests(unittest.TestCase):
             expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
             self.assertEqual(page.locator('.platform-login').evaluate(
                 'element => getComputedStyle(element).backgroundColor'), 'rgb(17, 25, 26)')
+            self.assertEqual(page.evaluate('window.platformTheme.provider().colors.canvas'), '#11191a')
+            self.assertEqual(page.evaluate('window.platformTheme.provider().colors.surface'), '#1b2024')
             self.assertEqual(page.evaluate("JSON.parse(JSON.stringify(window.platformTheme.state())).mode"), 'system')
             self.assertFalse(errors, errors)
             context.close()
@@ -401,6 +451,127 @@ class AgentBrowserTests(unittest.TestCase):
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.goto(self.url + '/_ui/login/ui_alice')
             expect(page.locator('#platform-appearance')).to_be_visible(timeout=60000)
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            for width, height in ((1440, 900), (1366, 768), (390, 844), (320, 700)):
+                page.set_viewport_size({'width': width, 'height': height})
+                page.wait_for_function('document.documentElement.scrollWidth <= innerWidth')
+                self.assertLessEqual(page.locator('body').evaluate(
+                    "element => getComputedStyle(element, '::before').height.replace('px', '') * 1"), height)
+                page.screenshot(path=str(report / f'appearance-perspective-grid-{width}.png'))
+            page.set_viewport_size({'width': 1440, 'height': 900})
+            page.emulate_media(forced_colors='active')
+            self.assertEqual(page.locator('body').evaluate(
+                "element => getComputedStyle(element, '::before').display"), 'none')
+            page.emulate_media(forced_colors='none')
+            for route, selector in (
+                ('/task_/overview', '.tc-overview-page'),
+                ('/task_/task_mgmt', '.tc-platform-page'),
+                ('/task_/windows_scheduler', '.platform-shell'),
+                ('/task_/task_log', '.platform-shell'),
+                ('/access_/role_mgmt', '#role-mgmt-button-add'),
+                ('/access_/user_mgmt', '.platform-shell'),
+                ('/access_/group_mgmt', '.platform-shell'),
+                ('/access_/group_auth', '.platform-shell'),
+                ('/setting_/notify_api', '.channel-settings-page'),
+                ('/setting_/listen_api', '.channel-settings-page'),
+                ('/setting_/agent_provider', '.agent-config-page'),
+                ('/message_/announcement', '.platform-shell'),
+                ('/person_/personal_info', '#personal-center-tabs'),
+                ('/dashboard_/monitor?independent_', '.monitor-metric'),
+            ):
+                with self.subTest(route=route):
+                    page.goto(self.url + route)
+                    expect(page.locator(selector).first).to_be_visible(timeout=30000)
+                    expect(page.locator('body')).to_have_css('background-color', 'rgb(21, 24, 25)')
+                    self.assertIn('conic-gradient', page.locator('body').evaluate(
+                        "element => getComputedStyle(element, '::before').backgroundImage"))
+                    if 'independent_' in route:
+                        expect(page.locator('.platform-shell')).to_have_count(0)
+                    if route.startswith('/access_/') or route == '/message_/announcement':
+                        table = page.locator('.ant-tabs-tabpane-active .ant-table-content').first
+                        expect(table).to_be_visible(timeout=15000)
+                        for width, height in ((1440, 900), (390, 844), (320, 700)):
+                            page.set_viewport_size({'width': width, 'height': height})
+                            expect(table).to_have_css('scrollbar-width', 'thin')
+                            expect(table).to_have_css('scrollbar-color', 'rgb(127, 144, 152) rgb(29, 34, 36)')
+                            scrollers = page.locator('.ant-tabs-tabpane-active .ant-table-wrapper').evaluate_all('''tables => {
+                                const nodes = tables.flatMap(table => [...table.querySelectorAll(
+                                    '.ant-table-container, .ant-table-content, .ant-table-body')]);
+                                return nodes.filter(node => node.scrollWidth > node.clientWidth + 1 &&
+                                    ['auto', 'scroll'].includes(getComputedStyle(node).overflowX)).map(node => {
+                                    node.scrollLeft = Math.min(60, node.scrollWidth - node.clientWidth);
+                                    const moved = node.scrollLeft > 0;
+                                    node.scrollLeft = 0;
+                                    return moved;
+                                });
+                            }''')
+                            if route == '/access_/user_mgmt' and width <= 390:
+                                self.assertTrue(scrollers, (route, width, 'horizontal scroll container required'))
+                            self.assertTrue(all(scrollers), (route, width, scrollers))
+                            page.screenshot(path=str(report / f'appearance-scrollbar-{route.rsplit("/", 1)[-1]}-{width}.png'))
+                        page.set_viewport_size({'width': 1440, 'height': 900})
+                        for changes in ({'contrast': 'high'}, {'mode': 'light', 'contrast': 'normal'}):
+                            page.evaluate('value => window.platformTheme.update(value)', changes)
+                            expect(table).to_have_css('scrollbar-width', 'auto')
+                        page.evaluate('value => window.platformTheme.update(value)', {'mode': 'dark', 'contrast': 'normal'})
+                        page.emulate_media(forced_colors='active')
+                        expect(table).to_have_css('scrollbar-color', 'auto')
+                        page.emulate_media(forced_colors='none')
+                    if route == '/task_/task_log':
+                        for width, height in ((1440, 900), (1366, 768), (390, 844), (320, 700)):
+                            page.set_viewport_size({'width': width, 'height': height})
+                            expect(page.locator('.tc-page .ant-input-affix-wrapper').first).to_have_css(
+                                'border-top-color', 'rgb(127, 144, 152)')
+                            expect(page.locator('#tc-log-table .ant-table-thead th').first).to_have_css('font-size', '14px')
+                            expect(page.locator('#tc-log-table .ant-table-tbody td').first).to_have_css('font-size', '14px')
+                            expect(page.locator('#tc-log-page .tc-eyebrow')).to_have_css('font-size', '12px')
+                            expect(page.locator('#tc-log-page .ant-pagination')).to_have_css('font-size', '14px')
+                            self.assertTrue(page.locator('.tc-toolbar').evaluate(
+                                'element => element.scrollWidth <= element.clientWidth'))
+                            self.assertTrue(page.locator('.platform-content-column').evaluate(
+                                'element => element.scrollWidth <= element.clientWidth'))
+                            grid_left = page.locator('body').evaluate(
+                                "element => parseFloat(getComputedStyle(element, '::before').left)")
+                            content_left = page.locator('.platform-content-column').evaluate(
+                                'element => element.getBoundingClientRect().left')
+                            self.assertAlmostEqual(grid_left, content_left, delta=1)
+                            for selector in ('.ant-table-container', '.ant-table-content'):
+                                expect(page.locator('#tc-log-table ' + selector)).to_have_css('scrollbar-width', 'thin')
+                            page.screenshot(path=str(report / f'appearance-neutral-log-{width}.png'))
+                        page.set_viewport_size({'width': 1440, 'height': 900})
+                        if 'ant-layout-sider-collapsed' in page.locator('#menu-collapse-sider').get_attribute('class'):
+                            page.locator('#btn-menu-collapse-sider-menu').click()
+                            expect(page.locator('#menu-collapse-sider')).not_to_have_class(re.compile('ant-layout-sider-collapsed'))
+                        page.locator('#btn-menu-collapse-sider-menu').click()
+                        expect(page.locator('#menu-collapse-sider')).to_have_class(re.compile('ant-layout-sider-collapsed'))
+                        page.wait_for_function('''() => {
+                            const gridLeft = parseFloat(getComputedStyle(document.body, '::before').left);
+                            const contentLeft = document.querySelector('.platform-content-column').getBoundingClientRect().left;
+                            return Math.abs(gridLeft - contentLeft) < 1;
+                        }''')
+                        page.screenshot(path=str(report / 'appearance-neutral-log-collapsed.png'))
+                        page.locator('#btn-menu-collapse-sider-menu').click()
+                    if route == '/access_/role_mgmt':
+                        from io import BytesIO
+                        from PIL import Image, ImageChops
+
+                        page.screenshot(path=str(report / 'appearance-perspective-grid-management.png'))
+                        corner = {'x': 0, 'y': 880, 'width': 1440, 'height': 20}
+                        visible = Image.open(BytesIO(page.screenshot(clip=corner))).convert('RGB')
+                        hidden = page.add_style_tag(content='body::before { display: none !important; }')
+                        plain = Image.open(BytesIO(page.screenshot(clip=corner))).convert('RGB')
+                        hidden.evaluate('element => element.remove()')
+                        self.assertIsNotNone(ImageChops.difference(visible, plain).getbbox())
+            page.goto(self.url + '/missing-background-probe')
+            expect(page.locator('html')).to_have_attribute('data-theme-ready', 'true')
+            expect(page.locator('.platform-shell')).to_have_count(0)
+            expect(page.locator('body')).to_have_css('background-color', 'rgb(21, 24, 25)')
+            self.assertIn('conic-gradient', page.locator('body').evaluate(
+                "element => getComputedStyle(element, '::before').backgroundImage"))
+            page.screenshot(path=str(report / 'appearance-perspective-grid-error.png'))
+            page.goto(self.url + '/dashboard_/monitor')
+            expect(page.locator('.monitor-metric')).to_have_count(4, timeout=30000)
             page.evaluate("""() => {
                 window.dash_clientside.set_props('global-message-container', {children: {
                     namespace: 'feffery_antd_components', type: 'AntdMessage',
@@ -415,7 +586,7 @@ class AgentBrowserTests(unittest.TestCase):
             expect(page.locator('.ant-notification-notice')).to_be_visible()
             for selector in ('.ant-message-notice-content', '.ant-notification-notice-wrapper'):
                 self.assertEqual(page.locator(selector).evaluate(
-                    'element => getComputedStyle(element).backgroundColor'), 'rgb(27, 32, 36)')
+                    'element => getComputedStyle(element).backgroundColor'), 'rgb(39, 45, 48)')
             page.locator('#platform-appearance summary').click()
             page.locator('[data-theme-mode="light"]').click()
             for selector in ('.ant-message-notice-content', '.ant-notification-notice-wrapper'):
@@ -428,7 +599,7 @@ class AgentBrowserTests(unittest.TestCase):
             page.keyboard.press('Escape')
             page.get_by_text('新建任务', exact=True).click()
             expect(page.locator('.ant-modal-content:visible')).to_be_visible()
-            expect(page.locator('.ant-modal-content:visible')).to_have_css('background-color', 'rgb(27, 32, 36)')
+            expect(page.locator('.ant-modal-content:visible')).to_have_css('background-color', 'rgb(39, 45, 48)')
             page.screenshot(path=str(ROOT / 'cache/report/ui/appearance-dark-modal.png'))
             self.assertFalse(errors, errors)
             loader = context.new_page()
@@ -436,7 +607,7 @@ class AgentBrowserTests(unittest.TestCase):
             loader.goto(self.url + '/dashboard_/monitor', wait_until='domcontentloaded')
             expect(loader.locator('._dash-loading')).to_be_visible()
             expect(loader.locator('html')).to_have_attribute('data-theme', 'dark')
-            expect(loader.locator('._dash-loading')).to_have_css('background-color', 'rgb(39, 46, 52)')
+            expect(loader.locator('._dash-loading')).to_have_css('background-color', 'rgb(39, 45, 48)')
             loader.screenshot(path=str(ROOT / 'cache/report/ui/appearance-dark-loader.png'), timeout=5000)
             context.close()
             browser.close()
@@ -676,7 +847,7 @@ class AgentBrowserTests(unittest.TestCase):
             context.close()
             browser.close()
 
-    def test_columbus_configuration_and_native_history_chat(self):
+    def test_internal_agent_configuration_and_native_history_chat(self):
         from playwright.sync_api import sync_playwright, expect
 
         with sync_playwright() as playwright:
@@ -685,47 +856,47 @@ class AgentBrowserTests(unittest.TestCase):
             page = context.new_page()
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
-            page.goto(self.url + '/_ui/login/ui_columbus')
+            page.goto(self.url + '/_ui/login/ui_internal_agent')
             page.goto(self.url + '/setting_/agent_provider')
             page.locator('#agent-provider-add').click()
             page.locator('.ant-select').filter(has=page.locator('#agent-provider-kind')).locator(
                 '.ant-select-selector').click()
-            page.get_by_title('Columbus Agent', exact=True).click()
-            expect(page.locator('#agent-columbus-fields')).to_be_visible()
+            page.get_by_title('企业内部 Agent 接口', exact=True).click()
+            expect(page.locator('#agent-internal-agent-fields')).to_be_visible()
             expect(page.locator('#agent-provider-model')).to_be_hidden()
-            page.locator('#agent-provider-name').fill('Columbus 比赛 Agent')
-            page.locator('#agent-provider-url').fill('https://columbus.invalid/v5')
-            page.locator('#agent-provider-key').fill('browser-columbus-subscription')
+            page.locator('#agent-provider-name').fill('Internal Agent API 比赛 Agent')
+            page.locator('#agent-provider-url').fill('https://internal-agent.invalid/v5')
+            page.locator('#agent-provider-key').fill('browser-internal_agent-subscription')
             for key, value in {
                 'agent_id': '11111111-1111-4111-8111-111111111111',
                 'tenant_id': '22222222-2222-4222-8222-222222222222',
                 'client_id': '33333333-3333-4333-8333-333333333333',
                 'scope': 'api://browser-test/.default',
-                'client_secret': 'browser-columbus-client-secret',
+                'client_secret': 'browser-internal_agent-client-secret',
             }.items():
-                page.locator('#agent-columbus-' + key).fill(value)
+                page.locator('#agent-internal-agent-' + key).fill(value)
             page.locator('#agent-provider-test').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
             page.locator('#agent-provider-save').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('加密保存', timeout=30000)
             expect(page.locator('#agent-provider-key')).to_have_value('')
-            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            expect(page.locator('#agent-internal-agent-client_secret')).to_have_value('')
             page.reload()
-            expect(page.locator('#agent-columbus-agent_id')).to_have_value(
+            expect(page.locator('#agent-internal-agent-agent_id')).to_have_value(
                 '11111111-1111-4111-8111-111111111111', timeout=30000)
-            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            expect(page.locator('#agent-internal-agent-client_secret')).to_have_value('')
             page.locator('#agent-provider-test').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
             report = ROOT / 'cache/report/ui'
             report.mkdir(parents=True, exist_ok=True)
             for width, height in [(1440, 900), (1366, 768), (1024, 768), (768, 1024), (390, 844), (320, 700)]:
                 page.set_viewport_size({'width': width, 'height': height})
-                page.locator('#agent-columbus-fields').scroll_into_view_if_needed()
+                page.locator('#agent-internal-agent-fields').scroll_into_view_if_needed()
                 self.assertTrue(page.locator('.agent-config-page').evaluate(
                     'element => element.scrollWidth <= element.clientWidth'))
                 self.assertTrue(page.locator('.platform-content-column').evaluate(
                     'element => element.scrollWidth <= element.clientWidth'))
-                fields = page.locator('#agent-columbus-fields .agent-config-field').evaluate_all(
+                fields = page.locator('#agent-internal-agent-fields .agent-config-field').evaluate_all(
                     'elements => elements.map(element => element.getBoundingClientRect().toJSON())')
                 if width > 640:
                     self.assertAlmostEqual(fields[0]['top'], fields[1]['top'], delta=1)
@@ -742,23 +913,23 @@ class AgentBrowserTests(unittest.TestCase):
                     const box = element.getBoundingClientRect();
                     return box.top >= 0 && box.bottom <= innerHeight;
                 }'''), f'Connection feedback is outside the viewport at {width}px')
-                page.screenshot(path=str(report / f'columbus-configuration-{width}.png'))
+                page.screenshot(path=str(report / f'internal_agent-configuration-{width}.png'))
             page.set_viewport_size({'width': 1440, 'height': 900})
             page.locator('#platform-appearance summary').click()
             page.locator('[data-theme-mode="dark"]').click()
             page.keyboard.press('Escape')
             expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
-            page.locator('#agent-columbus-fields').scroll_into_view_if_needed()
-            page.screenshot(path=str(report / 'columbus-configuration-dark-1440.png'))
+            page.locator('#agent-internal-agent-fields').scroll_into_view_if_needed()
+            page.screenshot(path=str(report / 'internal_agent-configuration-dark-1440.png'))
             page.goto(self.url + '/dashboard_/monitor')
             page.locator('#agent-launcher').click()
             expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
-            baseline = len(context.request.get(self.url + '/_ui/stats').json()['columbus_history_lengths'])
-            for prompt in ('First Columbus question', 'Continue Columbus question'):
+            baseline = len(context.request.get(self.url + '/_ui/stats').json()['internal_agent_history_lengths'])
+            for prompt in ('First Internal Agent API question', 'Continue Internal Agent API question'):
                 page.locator('#agent-prompt').fill(prompt)
                 page.locator('#agent-send').click()
                 try:
-                    expect(page.locator('#agent-messages')).to_contain_text('COLUMBUS REPLY: ' + prompt,
+                    expect(page.locator('#agent-messages')).to_contain_text('INTERNAL_AGENT REPLY: ' + prompt,
                                                                           timeout=30000)
                 except AssertionError as error:
                     raise AssertionError(
@@ -769,13 +940,112 @@ class AgentBrowserTests(unittest.TestCase):
                 page.reload()
                 page.locator('#agent-launcher').click()
                 expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
-            lengths = context.request.get(self.url + '/_ui/stats').json()['columbus_history_lengths']
+            lengths = context.request.get(self.url + '/_ui/stats').json()['internal_agent_history_lengths']
             self.assertEqual(lengths[baseline:], [0, 1])
-            expect(page.locator('#agent-messages')).to_contain_text('First Columbus question')
-            expect(page.locator('#agent-messages')).to_contain_text('Continue Columbus question')
-            page.screenshot(path=str(report / 'columbus-chat-dark-1440.png'))
+            expect(page.locator('#agent-messages')).to_contain_text('First Internal Agent API question')
+            expect(page.locator('#agent-messages')).to_contain_text('Continue Internal Agent API question')
+            page.screenshot(path=str(report / 'internal_agent-chat-dark-1440.png'))
             page.goto(self.url + '/setting_/agent_provider')
-            expect(page.locator('#agent-provider-name')).to_have_value('Columbus 比赛 Agent', timeout=30000)
+            expect(page.locator('#agent-provider-name')).to_have_value('Internal Agent API 比赛 Agent', timeout=30000)
+            page.locator('#agent-provider-delete').click()
+            page.get_by_role('button', name='确认删除', exact=True).click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('已删除', timeout=30000)
+            self.assertEqual(errors, [])
+            context.close()
+            browser.close()
+
+    def test_enterprise_models_file_setup_chat_and_owner_permissions(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='zh-CN')
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(self.url + '/_ui/login/ui_enterprise')
+            page.goto(self.url + '/setting_/agent_provider')
+            page.locator('#agent-provider-add').click()
+            page.locator('.ant-select').filter(has=page.locator('#agent-provider-kind')).locator(
+                '.ant-select-selector').click()
+            page.get_by_title('企业模型', exact=True).click()
+            expect(page.locator('#agent-enterprise-fields')).to_be_visible()
+            expect(page.locator('#agent-provider-key')).to_be_hidden()
+            expect(page.locator('#agent-provider-url')).to_be_disabled()
+            page.locator('#agent-provider-name').fill('Enterprise test connection')
+            page.locator('#agent-enterprise-models').fill('gpt-5-mini\nenterprise-test-model')
+            page.locator('.ant-select').filter(has=page.locator('#agent-enterprise-model')).locator(
+                '.ant-select-selector').click()
+            page.get_by_title('enterprise-test-model', exact=True).click()
+            page.locator('#agent-enterprise-check').click()
+            expect(page.locator('#agent-enterprise-login-status')).to_contain_text('尚未验证上游')
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Token 仍只保留', timeout=30000)
+            page.locator('#agent-provider-make-default').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('已更新新对话', timeout=30000)
+            page.reload()
+            expect(page.locator('#agent-enterprise-models')).to_have_value('gpt-5-mini\nenterprise-test-model')
+            expect(page.locator('.ant-select').filter(has=page.locator('#agent-enterprise-model'))).to_contain_text(
+                'enterprise-test-model')
+            self.assertNotIn('browser-enterprise-fake-access', page.content())
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            for width, height in [(1440, 900), (1366, 768), (390, 844), (320, 700)]:
+                page.set_viewport_size({'width': width, 'height': height})
+                page.locator('#agent-enterprise-fields').scroll_into_view_if_needed()
+                self.assertTrue(page.locator('.agent-config-page').evaluate(
+                    'element => element.scrollWidth <= element.clientWidth'))
+                self.assertTrue(page.locator('#agent-provider-save').evaluate('''element => {
+                    const box = element.getBoundingClientRect();
+                    return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+                }'''), f'Save button is obscured at {width}px')
+                page.screenshot(path=str(report / f'enterprise-models-configuration-{width}.png'))
+            context.add_cookies([{'name': 'dash-i18n', 'value': 'en-us', 'url': self.url}])
+            page.reload()
+            expect(page.get_by_role('button', name='Check Enterprise AI sign-in', exact=True)).to_be_visible()
+            page.locator('#agent-enterprise-check').click()
+            expect(page.locator('#agent-enterprise-login-status')).to_contain_text('upstream not yet verified')
+            context.add_cookies([{'name': 'dash-i18n', 'value': 'zh-cn', 'url': self.url}])
+            page.set_viewport_size({'width': 1440, 'height': 900})
+            page.goto(self.url + '/dashboard_/monitor')
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+            profile_id = page.locator('#agent-conversation-title').get_attribute('data-profile-id')
+            baseline = len(context.request.get(self.url + '/_ui/stats').json()['enterprise_parents'])
+            for prompt in ('First enterprise question', 'Second enterprise question'):
+                page.locator('#agent-prompt').fill(prompt)
+                page.locator('#agent-send').click()
+                expect(page.locator('#agent-messages')).to_contain_text('ENTERPRISE REPLY: ' + prompt,
+                                                                      timeout=30000)
+                expect(page.locator('#agent-prompt')).to_be_enabled()
+                page.reload()
+                page.locator('#agent-launcher').click()
+                expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+            self.assertEqual(context.request.get(self.url + '/_ui/stats').json()['enterprise_parents'][baseline:],
+                             [None, 'browser-parent'])
+            page.goto(self.url + '/_ui/login/ui_config')
+            page.goto(self.url + '/setting_/agent_provider')
+            page.locator('.ant-select').filter(has=page.locator('#agent-provider-kind')).locator(
+                '.ant-select-selector').click()
+            expect(page.get_by_title('企业模型', exact=True)).to_have_count(0)
+            page.keyboard.press('Escape')
+            page.goto(self.url + '/_ui/login/ui_member')
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-conversation-title')).to_have_attribute('data-conversation-id',
+                                                                              re.compile('.+'))
+            conversation = page.locator('#agent-conversation-title').get_attribute('data-conversation-id')
+            before = context.request.get(self.url + '/_ui/stats').json()['enterprise_parents']
+            denied = context.request.post(self.url + '/agent_stream', data={
+                'conversation_id': conversation, 'profile_id': profile_id,
+                'prompt': 'Forbidden browser request', 'allow_log_export': False,
+            })
+            self.assertEqual(denied.status, 403)
+            self.assertEqual(context.request.get(self.url + '/_ui/stats').json()['enterprise_parents'], before)
+            page.goto(self.url + '/_ui/login/ui_enterprise')
+            page.goto(self.url + '/setting_/agent_provider')
+            expect(page.locator('#agent-provider-name')).to_have_value('Enterprise test connection')
             page.locator('#agent-provider-delete').click()
             page.get_by_role('button', name='确认删除', exact=True).click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('已删除', timeout=30000)
@@ -1092,12 +1362,12 @@ class AgentBrowserTests(unittest.TestCase):
             page.locator('#agent-provider-save').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('Enter a profile name')
             page.locator('.ant-select:has(#agent-provider-kind) .ant-select-selector').click()
-            page.get_by_title('Columbus Agent', exact=True).click()
-            page.locator('#agent-provider-name').fill('Bilingual Columbus')
-            page.locator('#agent-provider-url').fill('https://columbus.invalid/v5')
+            page.get_by_title('Internal Agent API', exact=True).click()
+            page.locator('#agent-provider-name').fill('Bilingual Internal Agent API')
+            page.locator('#agent-provider-url').fill('https://internal-agent.invalid/v5')
             page.locator('#agent-provider-key').fill('browser-locale-subscription')
             page.locator('#agent-provider-test').click()
-            expect(page.locator('.agent-config-feedback')).to_contain_text('Columbus Agent ID must be a valid UUID.')
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Internal Agent API Agent ID must be a valid UUID.')
             for key, value in {
                 'agent_id': '11111111-1111-4111-8111-111111111111',
                 'tenant_id': '22222222-2222-4222-8222-222222222222',
@@ -1105,7 +1375,7 @@ class AgentBrowserTests(unittest.TestCase):
                 'scope': 'api://browser-test/.default',
                 'client_secret': 'browser-locale-secret',
             }.items():
-                page.locator('#agent-columbus-' + key).fill(value)
+                page.locator('#agent-internal-agent-' + key).fill(value)
             page.locator('#agent-provider-test').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('Connection successful', timeout=30000)
             page.locator('#agent-provider-save').click()
@@ -1113,9 +1383,9 @@ class AgentBrowserTests(unittest.TestCase):
             page.locator('#agent-provider-make-default').click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('Default profile updated')
             expect(page.locator('#agent-config-live-detail')).to_contain_text('New conversations')
-            expect(page.locator('#agent-config-live-status')).to_have_text('Columbus Agent')
+            expect(page.locator('#agent-config-live-status')).to_have_text('Internal Agent API')
             expect(page.locator('#agent-provider-key')).to_have_value('')
-            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            expect(page.locator('#agent-internal-agent-client_secret')).to_have_value('')
             report = ROOT / 'cache/report/ui'
             report.mkdir(parents=True, exist_ok=True)
             for mode in ('light', 'dark'):
@@ -1148,7 +1418,7 @@ class AgentBrowserTests(unittest.TestCase):
                 page.set_viewport_size({'width': 1366, 'height': 768})
             page.reload()
             expect(page.get_by_role('main', name='Agent Connections')).to_be_visible(timeout=30000)
-            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Columbus')
+            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Internal Agent API')
             expect(page.locator('#agent-provider-editor-status')).to_contain_text('Credentials are stored securely')
             page.locator('#agent-provider-delete').click()
             expect(page.locator('.ant-popover:visible')).to_contain_text('Local chat history is kept')
@@ -1156,14 +1426,88 @@ class AgentBrowserTests(unittest.TestCase):
             page.locator('#global-locale-switch').click()
             expect(page.get_by_role('main', name='Agent 接入')).to_be_visible(timeout=30000)
             expect(page.get_by_role('tab', name='Agent 接入', exact=True)).to_be_visible()
-            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Columbus')
+            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Internal Agent API')
             expect(page.locator('#agent-provider-key')).to_have_value('')
-            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            expect(page.locator('#agent-internal-agent-client_secret')).to_have_value('')
             page.locator('#agent-provider-delete').click()
             page.get_by_role('button', name='确认删除', exact=True).click()
             expect(page.locator('.agent-config-feedback')).to_contain_text('配置已删除')
             self.assertEqual(errors, [])
             context.close()
+            browser.close()
+
+    def test_page_assistant_compact_layout_and_loading_states(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page(viewport={'width': 1440, 'height': 900})
+            errors = []
+            model_requests = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.on('request', lambda request: model_requests.append(request.url)
+                    if '/page_agent_llm/v1/' in request.url else None)
+            page.goto(self.url + '/_ui/login/ui_locale')
+            expect(page.locator('.monitor-metric')).to_have_count(4, timeout=60000)
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-send')).to_be_enabled(timeout=15000)
+            expect(page.locator('#page-agent-scope')).to_have_text('系统监控')
+            details = page.locator('.page-agent-details')
+            self.assertFalse(details.evaluate('(element) => element.open'))
+            expect(page.locator('#page-agent-launcher')).to_have_text('启用')
+            expect(page.locator('#page-agent-launcher')).not_to_be_visible()
+            expect(page.locator('#agent-conversation-profile-feedback')).not_to_be_visible()
+            self.assertFalse(page.evaluate('Boolean(window.PageAgent || window.pageAgent)'))
+            self.assertEqual(model_requests, [])
+            expect(page.locator('#agent-composer').get_by_role('checkbox')).not_to_be_checked()
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            for width in (1440, 1366, 390, 320):
+                page.set_viewport_size({'width': width, 'height': 900 if width > 700 else 740})
+                expect(page.locator('#agent-panel')).to_be_in_viewport()
+                expect(page.locator('#agent-send')).to_be_in_viewport()
+                expect(page.locator('#agent-provider-profile')).to_be_in_viewport()
+                service = page.locator('.agent-service-toolbar').bounding_box()
+                auxiliary = details.locator('summary').bounding_box()
+                self.assertLess(abs(service['y'] + service['height'] / 2
+                                    - auxiliary['y'] - auxiliary['height'] / 2), 3)
+                self.assertTrue(page.locator('#agent-panel').evaluate(
+                    '(element) => element.scrollWidth <= element.clientWidth + 1'))
+                page.screenshot(path=str(report / f'page-assistant-compact-{width}.png'))
+                details.locator('summary').click()
+                expect(page.locator('#page-agent-capabilities')).to_have_text('读取指标 / 打开任务中心')
+                expect(page.locator('.page-agent-policy')).to_contain_text('不执行任务')
+                expect(page.locator('#agent-send')).to_be_in_viewport()
+                expect(page.locator('.page-agent-details-content')).to_be_in_viewport()
+                page.screenshot(path=str(report / f'page-assistant-expanded-{width}.png'))
+                page.keyboard.press('Escape')
+                self.assertFalse(details.evaluate('(element) => element.open'))
+                expect(page.locator('#agent-panel')).to_be_visible()
+
+            details.locator('summary').click()
+            page.locator('#agent-prompt').click()
+            self.assertFalse(details.evaluate('(element) => element.open'))
+            details.locator('summary').click()
+            page.route('**/assets/vendor/page-agent/**', lambda route: route.abort())
+            page.locator('#page-agent-launcher').click()
+            expect(page.locator('#page-agent-status')).to_have_class(
+                'page-agent-status page-agent-status-loading')
+            expect(page.locator('#page-agent-launcher')).to_have_text('加载中…')
+            expect(page.locator('#page-agent-launcher')).to_be_disabled()
+            expect(page.locator('#page-agent-status')).to_have_class(
+                'page-agent-status page-agent-status-error', timeout=20000)
+            expect(page.locator('#page-agent-launcher')).to_have_text('重试')
+            expect(page.locator('#page-agent-launcher')).to_be_enabled()
+            page.unroute('**/assets/vendor/page-agent/**')
+            page.locator('#page-agent-launcher').click()
+            expect(page.locator('#page-agent-status')).to_have_class(
+                'page-agent-status page-agent-status-ready', timeout=20000)
+            expect(page.locator('#page-agent-status')).to_have_text('工具已就绪，模型连接将在使用时建立。')
+            expect(page.locator('#page-agent-launcher')).to_have_text('已启用')
+            self.assertTrue(page.evaluate('Boolean(window.pageAgent)'))
+            self.assertEqual(model_requests, [])
+            page.screenshot(path=str(report / 'page-assistant-ready-320.png'))
+            self.assertEqual(errors, [])
             browser.close()
 
     def test_robot_and_persistent_dialog(self):

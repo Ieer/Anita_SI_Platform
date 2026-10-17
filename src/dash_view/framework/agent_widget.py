@@ -110,8 +110,10 @@ def render_content(menu_access: MenuAccess, **kwargs):
     profile_id = None
     try:
         profile_id = agent_provider_repository.default_profile_id()
-        profile_options = agent_provider_repository.profile_options()
-        status = model_status(profile_id) if profile_id else model_status()
+        profile_options = agent_provider_repository.profile_options(menu_access)
+        status = model_status(profile_id, access=menu_access)
+        if profile_id not in {option['value'] for option in profile_options}:
+            profile_id = None
     except Exception:
         profile_options = []
         status = {'ready': False, 'model': None,
@@ -149,18 +151,29 @@ def render_content(menu_access: MenuAccess, **kwargs):
                                placeholder=t__dashboard('选择会话'),
                                style={'flex': 1, 'minWidth': 0},
                                **{'aria-label': t__dashboard('会话')}),
-                fac.AntdSelect(id='agent-provider-profile', options=profile_options,
-                               value=profile_id if profile_options else None,
-                               placeholder=t__dashboard('选择 Agent 服务'),
-                               style={'flex': 1, 'minWidth': 0},
-                               **{'aria-label': t__dashboard('当前对话使用的 Agent 服务')}),
                 fac.AntdTooltip(fac.AntdButton(id='agent-new-conversation', type='text',
                     icon=fac.AntdIcon(icon='antd-plus'), title=t__dashboard('新建会话'),
                     **{'aria-label': t__dashboard('新建会话')}),
                     title=t__dashboard('新建会话')),
             ], className='agent-session-toolbar'),
-            html.Div(id='agent-conversation-profile-feedback', role='status',
-                     className='agent-conversation-profile-feedback'),
+            html.Div([
+                html.Div([
+                    html.Span(t__dashboard('Agent 服务'), className='agent-service-label'),
+                    fac.AntdSelect(id='agent-provider-profile', options=profile_options,
+                               value=profile_id if profile_options else None,
+                               placeholder=t__dashboard('选择 Agent 服务'),
+                               style={'flex': 1, 'minWidth': 0},
+                               **{'aria-label': t__dashboard('当前对话使用的 Agent 服务')}),
+                    html.Details([
+                        html.Summary(fac.AntdIcon(icon='antd-info-circle'),
+                                     title=t__dashboard('Agent 服务'),
+                                     **{'aria-label': t__dashboard('Agent 服务')}),
+                        html.Div(id='agent-conversation-profile-feedback', role='status',
+                                 className='agent-conversation-profile-feedback'),
+                    ], className='agent-service-details'),
+                ], className='agent-service-toolbar'),
+                render_page_assistant(),
+            ], className='agent-tools-toolbar'),
             html.Div([
                 html.Span(status_message),
                 *([dcc.Link(t__dashboard('前往配置'), href='/setting_/agent_provider')]
@@ -170,7 +183,6 @@ def render_content(menu_access: MenuAccess, **kwargs):
             html.Span(t__dashboard('当前会话'), id='agent-conversation-title', hidden=True,
                       **{'data-conversation-id': ''}),
             html.Div([
-                render_page_assistant(),
                 html.Div(render_messages([]), id='agent-messages', className='agent-messages',
                          **{'aria-live': 'polite', 'aria-relevant': 'additions'}),
                 html.Div(id='agent-stream-output', className='agent-stream-output',

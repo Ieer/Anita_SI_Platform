@@ -7,6 +7,29 @@ from unittest.mock import patch
 import pytest
 
 
+def test_password_scrypt_storage_and_legacy_verification():
+    import hashlib
+    from common.utilities import util_password
+
+    digest = hashlib.sha256(b'isolated-password').hexdigest()
+    first = util_password.hash_password_digest(digest)
+    second = util_password.hash_password('isolated-password')
+    assert first.startswith('s1$')
+    assert len(first) <= 64
+    assert first != second
+    assert util_password.verify_password_digest(digest, first)
+    assert util_password.verify_password_digest(digest, second)
+    assert util_password.verify_password_digest(digest, digest)
+    assert not util_password.is_legacy_password(first)
+    assert not util_password.verify_password_digest(hashlib.sha256(b'wrong').hexdigest(), first)
+    for malformed in (None, '', 's1$bad', 's1$' + '!' * 54, 's2$' + 'a' * 54):
+        assert not util_password.verify_password_digest(digest, malformed)
+    for invalid in (None, '', 'a' * 63, 'a' * 10000, 'z' * 64):
+        assert not util_password.verify_password_digest(invalid, first)
+        with pytest.raises(ValueError):
+            util_password.hash_password_digest(invalid)
+
+
 @pytest.fixture
 def oauth_environment(tmp_path):
     import secrets
@@ -33,6 +56,88 @@ def oauth_environment(tmp_path):
         yield client, secret, database
         cache.clear()
         database.close()
+
+
+def test_password_login_upgrades_legacy_without_resetting_account(oauth_environment):
+    import hashlib
+    from database.sql_db.entity.table_user import SysUser
+    from database.sql_db.repositories import user_repository
+
+    digest = hashlib.sha256(b'legacy-password').hexdigest()
+    SysUser.update(password_sha256=digest).where(SysUser.user_name == 'oauth_probe').execute()
+    assert not user_repository.user_password_verify('oauth_probe', hashlib.sha256(b'wrong').hexdigest())
+    assert SysUser.get_by_id('oauth_probe').password_sha256 == digest
+    assert user_repository.user_password_verify('oauth_probe', digest)
+    stored = SysUser.get_by_id('oauth_probe').password_sha256
+    assert stored.startswith('s1$')
+    assert user_repository.user_password_verify('oauth_probe', digest)
+    assert SysUser.get_by_id('oauth_probe').password_sha256 == stored
+    assert not user_repository.user_password_verify('missing-user', digest)
+    SysUser.update(user_status=False).where(SysUser.user_name == 'oauth_probe').execute()
+    assert not user_repository.user_password_verify('oauth_probe', digest)
+
+
+def test_password_legacy_upgrade_does_not_overwrite_concurrent_reset(oauth_environment):
+    import hashlib
+    from common.utilities.util_password import hash_password
+    from database.sql_db.entity.table_user import SysUser
+    from database.sql_db.repositories import user_repository
+
+    digest = hashlib.sha256(b'legacy-password').hexdigest()
+    reset_hash = hash_password('concurrent-reset')
+    SysUser.update(password_sha256=digest).where(SysUser.user_name == 'oauth_probe').execute()
+
+    def concurrent_reset(candidate):
+        SysUser.update(password_sha256=reset_hash).where(SysUser.user_name == 'oauth_probe').execute()
+        return hash_password('legacy-password')
+
+    with patch.object(user_repository, 'hash_password_digest', side_effect=concurrent_reset):
+        assert not user_repository.user_password_verify('oauth_probe', digest)
+    assert SysUser.get_by_id('oauth_probe').password_sha256 == reset_hash
+
+
+def test_password_basic_auth_and_otp_confirmation_support_scrypt(oauth_environment):
+    import base64
+    import hashlib
+    from common.utilities.util_authorization import validate_basic
+    from common.utilities.util_password import hash_password
+    from database.sql_db.entity.table_user import SysUser
+    from database.sql_db.repositories import user_repository
+    from server import server
+
+    password = 'isolated-basic-password'
+    digest = hashlib.sha256(password.encode()).hexdigest()
+    SysUser.update(password_sha256=digest).where(SysUser.user_name == 'oauth_probe').execute()
+    token = base64.b64encode(f'oauth_probe:{password}'.encode()).decode()
+    with server.test_request_context('/'):
+        assert validate_basic(token) == {'user_name': 'oauth_probe'}
+    assert SysUser.get_by_id('oauth_probe').password_sha256.startswith('s1$')
+    assert user_repository.gen_otp_qrcode('oauth_probe', 'wrong') is False
+    assert len(user_repository.gen_otp_qrcode('oauth_probe', password)) == 16
+    SysUser.update(password_sha256=hash_password(password), user_status=False).where(
+        SysUser.user_name == 'oauth_probe').execute()
+    assert not user_repository.user_password_verify('oauth_probe', digest)
+
+
+def test_password_create_reset_edit_and_personal_change_use_scrypt(oauth_environment):
+    import hashlib
+    from common.utilities.util_password import verify_password_digest
+    from database.sql_db.entity.table_user import SysUser
+    from database.sql_db.repositories import user_repository
+
+    with patch.object(user_repository, 'get_menu_access', return_value='oauth_probe'):
+        assert user_repository.create_user('password_probe', 'Password Probe', 'initial-password', True,
+                                           '', [], '', '', '')
+        assert SysUser.get_by_id('password_probe').password_sha256.startswith('s1$')
+        assert not user_repository.update_user_password('password_probe', 'new-password', 'wrong')
+        assert user_repository.update_user_password('password_probe', 'changed-password', 'initial-password')
+        assert user_repository.update_user_password('password_probe', 'reset-password')
+        assert user_repository.update_user('password_probe', 'Password Probe', 'edited-password', True,
+                                           '', [], '', '', '')
+    stored = SysUser.get_by_id('password_probe').password_sha256
+    assert stored.startswith('s1$')
+    assert verify_password_digest(hashlib.sha256(b'edited-password').hexdigest(), stored)
+    assert not verify_password_digest(hashlib.sha256(b'initial-password').hexdigest(), stored)
 
 
 def test_oauth_full_flow_and_replay(oauth_environment):
@@ -205,6 +310,15 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
             self.closed = False
             self.commands = []
 
+        def load_system_host_keys(self):
+            self.host_keys_loaded = True
+
+        def set_missing_host_key_policy(self, policy):
+            self.host_key_policy = policy
+
+        def connect(self, **kwargs):
+            self.connection_parameters = kwargs
+
         def exec_command(self, command, **kwargs):
             self.commands.append(command)
             if command.startswith('rm -f'):
@@ -224,7 +338,7 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
     with database.bind_ctx(models), patch.object(apscheduler_repository, 'db', return_value=database), \
             patch.object(task_center_repository, 'db', return_value=database), \
             patch.object(app_apscheduler.tempfile, 'gettempdir', return_value=str(tmp_path)), \
-            patch.object(app_apscheduler.util_ssh, 'connect_ssh', return_value=ssh), \
+            patch.object(app_apscheduler.util_ssh.paramiko, 'SSHClient', return_value=ssh, create=False), \
             patch.object(app_apscheduler.util_ssh, 'ftp_ssh'):
         database.create_tables(models)
         now = datetime.now()
@@ -271,9 +385,35 @@ def test_ssh_scheduler_completion_or_uncertainty_updates_run_guard(tmp_path, rem
         assert SysApschedulerRunning.select().count() == 0
         assert channel.closed
         assert ssh.closed
+        assert ssh.host_keys_loaded
+        assert isinstance(ssh.host_key_policy, app_apscheduler.util_ssh.paramiko.RejectPolicy)
+        assert ssh.connection_parameters == {
+            'hostname': 'example.invalid', 'port': 22, 'username': 'probe', 'password': 'not-used',
+            'timeout': 10 if remote_finished else 1,
+            'auth_timeout': 10 if remote_finished else 1,
+            'banner_timeout': 10 if remote_finished else 1,
+        }
         assert any(command.startswith('rm -f -- /tmp/anitago_') for command in ssh.commands)
         assert not list((tmp_path / 'anitago_sshscript_cache').glob('anitago_*'))
         database.close()
+
+
+@pytest.mark.parametrize('timeout, expected', [(None, 20), (0, 1), ('7', 7)])
+def test_ssh_connection_default_and_normalized_timeouts(timeout, expected):
+    from unittest.mock import Mock
+    from common.utilities import util_ssh
+
+    client = Mock(spec=util_ssh.paramiko.SSHClient)
+    with patch.object(util_ssh.paramiko, 'SSHClient', return_value=client):
+        if timeout is None:
+            assert util_ssh.connect_ssh('example.invalid', '22', 'probe', 'unused') is client
+        else:
+            assert util_ssh.connect_ssh('example.invalid', '22', 'probe', 'unused', timeout=timeout) is client
+    client.load_system_host_keys.assert_called_once_with()
+    assert isinstance(client.set_missing_host_key_policy.call_args.args[0], util_ssh.paramiko.RejectPolicy)
+    client.connect.assert_called_once_with(
+        hostname='example.invalid', port=22, username='probe', password='unused',
+        timeout=expected, auth_timeout=expected, banner_timeout=expected)
 
 
 def test_date_job_can_be_serialized():

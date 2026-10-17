@@ -1,5 +1,6 @@
 import base64
 import json
+from contextlib import nullcontext
 from datetime import datetime
 from uuid import uuid4
 
@@ -79,18 +80,35 @@ def _options(profile_id, include_secret=False):
     return options
 
 
-def list_profiles():
+def provider_allowed(provider_id, access=None):
+    if provider_id != 'enterprise_models':
+        return True
+    from common.enterprise_models_credentials import require_access, EnterpriseAccessError
+
+    try:
+        require_access(access)
+        return True
+    except EnterpriseAccessError:
+        return False
+
+
+def list_profiles(access=None):
     database = _session()
     with database.connection_context():
         return [_profile_dict(row) for row in AgentProviderProfile.select().order_by(
-            AgentProviderProfile.is_default.desc(), AgentProviderProfile.name)]
+            AgentProviderProfile.is_default.desc(), AgentProviderProfile.name)
+                if provider_allowed(row.provider_id, access)]
 
 
-def get_profile(profile_id, include_secret=False):
+def get_profile(profile_id, include_secret=False, access=None):
     if profile_id == ENVIRONMENT_PROFILE_ID:
         from common.agent import ModelSettings
 
         settings = ModelSettings.from_environment()
+        if settings.provider == 'enterprise_models':
+            from common.enterprise_models_credentials import require_access
+
+            require_access(access)
         return {
             'profile_id': ENVIRONMENT_PROFILE_ID,
             'name': '服务端环境配置',
@@ -111,6 +129,10 @@ def get_profile(profile_id, include_secret=False):
         row = AgentProviderProfile.get_or_none(AgentProviderProfile.profile_id == profile_id)
         if row is None:
             raise AgentError('所选 Agent 配置不存在或已删除。')
+        if row.provider_id == 'enterprise_models':
+            from common.enterprise_models_credentials import require_access
+
+            require_access(access)
         return {**_profile_dict(row, include_secret),
                 'provider_options': _options(profile_id, include_secret)}
 
@@ -133,21 +155,29 @@ def _default_profile_id():
     return ENVIRONMENT_PROFILE_ID if model_status()['ready'] else None
 
 
-def resolve_profile_settings(profile_id):
-    profile = get_profile(profile_id, include_secret=True)
-    return ModelSettings.from_profile(profile)
+def resolve_profile_settings(profile_id, access=None):
+    profile = get_profile(profile_id, include_secret=True, access=access)
+    return ModelSettings.from_profile(profile).for_access(access)
 
 
-def prepare_settings(profile_id, provider_id, base_url, model, api_key, provider_options=None):
+def prepare_settings(profile_id, provider_id, base_url, model, api_key, provider_options=None, access=None):
     key = (api_key or '').strip()
     options = dict(provider_options or {})
+    if provider_id == 'enterprise_models':
+        from common.enterprise_models_credentials import require_access
+        from common.enterprise_models_provider import configured_endpoint, DEFAULT_MODELS
+
+        require_access(access)
+        key = ''
+        base_url = configured_endpoint()
+        options = {'models': options.get('models', list(DEFAULT_MODELS))}
     if profile_id:
-        previous = get_profile(profile_id, include_secret=True)
+        previous = get_profile(profile_id, include_secret=True, access=access)
         if previous['provider_id'] == provider_id:
             key = key or previous['api_key']
-            if provider_id == 'columbus_agent' and not options.get('client_secret'):
+            if provider_id == 'internal_agent' and not options.get('client_secret'):
                 options['client_secret'] = previous.get('provider_options', {}).get('client_secret', '')
-    settings = ModelSettings(api_key=key, model='' if provider_id == 'columbus_agent' else model.strip(),
+    settings = ModelSettings(api_key=key, model='' if provider_id == 'internal_agent' else model.strip(),
                              base_url=base_url.strip(),
                              provider=provider_id, profile_id=profile_id, provider_options=options)
     settings.validate()
@@ -155,7 +185,7 @@ def prepare_settings(profile_id, provider_id, base_url, model, api_key, provider
 
 
 def save_profile(profile_id, name, provider_id, base_url, model, api_key, make_default=False,
-                 provider_options=None):
+                 provider_options=None, access=None):
     from common.agent_providers import registered_provider_ids
 
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 64:
@@ -177,7 +207,8 @@ def save_profile(profile_id, name, provider_id, base_url, model, api_key, make_d
             existing = AgentProviderProfile.get_or_none(AgentProviderProfile.profile_id == profile_id)
         if existing is None:
             raise AgentError('要编辑的 Agent 配置不存在或已删除。')
-    settings = prepare_settings(profile_id, provider_id, base_url, model, api_key, provider_options)
+    settings = prepare_settings(profile_id, provider_id, base_url, model, api_key, provider_options, access)
+    base_url = settings.base_url
     key = settings.api_key
 
     database = _session()
@@ -239,8 +270,8 @@ def save_profile(profile_id, name, provider_id, base_url, model, api_key, make_d
         return profile_id
 
 
-def set_default_profile(profile_id):
-    profile = get_profile(profile_id)
+def set_default_profile(profile_id, access=None):
+    profile = get_profile(profile_id, access=access)
     if profile['source'] != 'database':
         raise AgentError('服务端环境配置不能设为数据库默认配置。')
     database = _session()
@@ -252,9 +283,10 @@ def set_default_profile(profile_id):
             raise AgentError('配置不存在或已删除。')
 
 
-def delete_profile(profile_id):
+def delete_profile(profile_id, access=None):
     if not profile_id or profile_id == ENVIRONMENT_PROFILE_ID:
         raise AgentError('不能删除服务端环境配置。')
+    get_profile(profile_id, access=access)
     database = _session()
     with database.connection_context(), database.atomic():
         row = AgentProviderProfile.get_or_none(AgentProviderProfile.profile_id == profile_id)
@@ -286,15 +318,15 @@ def delete_profile(profile_id):
             ).where(AgentConversationProfile.profile_id == profile_id).execute()
 
 
-def profile_options():
+def profile_options(access=None):
     from common.agent import model_status
 
-    profiles = list_profiles()
+    profiles = list_profiles(access)
     options = [
         {'label': f"{row['name']} · {row['model'] or row['provider_id']}", 'value': row['profile_id']}
         for row in profiles
     ]
-    if model_status()['ready']:
+    if model_status(access=access)['ready']:
         options.append({
             'label': f"{t__dashboard('服务端环境配置')} · {t__dashboard('环境变量')}",
             'value': ENVIRONMENT_PROFILE_ID,
@@ -321,9 +353,9 @@ def get_conversation_profile(owner, conversation_id):
         return _default_profile_id()
 
 
-def set_conversation_profile(owner, conversation_id, profile_id):
+def set_conversation_profile(owner, conversation_id, profile_id, access=None):
     if profile_id is not None:
-        get_profile(profile_id)
+        get_profile(profile_id, access=access)
     database = _session()
     with database.connection_context(), database.atomic():
         conversation = AgentConversation.get_or_none(
@@ -349,3 +381,19 @@ def set_conversation_profile(owner, conversation_id, profile_id):
         ).execute()
         AgentRemoteSession.delete().where(AgentRemoteSession.conversation == conversation).execute()
         AgentProviderState.delete().where(AgentProviderState.conversation == conversation).execute()
+
+
+def credential_rejected(version, reject=False):
+    from ..entity.table_agent import AgentCredentialRejection
+
+    database = db()
+    AgentCredentialRejection.bind(database)
+    with database.connection_context() if database.is_closed() else nullcontext():
+        database.create_tables([AgentCredentialRejection], safe=True)
+        if reject:
+            AgentCredentialRejection.get_or_create(version=version)
+        return AgentCredentialRejection.select().where(AgentCredentialRejection.version == version).exists()
+
+
+def reject_credential(version):
+    credential_rejected(version, reject=True)

@@ -20,18 +20,18 @@ def translate_provider_message(message):
         (r'最多保存 (\d+) 个 Agent 配置。', '最多保存 {value} 个 Agent 配置。'),
         (r'Provider“(.+)”未在服务端注册。', 'Provider“{value}”未在服务端注册。'),
         (r'未注册的 Agent Provider：(.+)', '未注册的 Agent Provider：{value}'),
-        (r'Columbus (Agent ID|Tenant ID|Client ID) 必须是有效 UUID。', 'Columbus {value} 必须是有效 UUID。'),
-        (r'请填写有效的 Columbus (Client Secret|Scope)。', '请填写有效的 Columbus {value}。'),
-        (r'Columbus (Token 获取|Agent 请求)认证或授权失败，请检查凭证、订阅和 Scope。',
-         'Columbus {value}认证或授权失败，请检查凭证、订阅和 Scope。'),
+        (r'Internal Agent API (Agent ID|Tenant ID|Client ID) 必须是有效 UUID。', 'Internal Agent API {value} 必须是有效 UUID。'),
+        (r'请填写有效的 Internal Agent API (Client Secret|Scope)。', '请填写有效的 Internal Agent API {value}。'),
+        (r'Internal Agent API (Token 获取|Agent 请求)认证或授权失败，请检查凭证、订阅和 Scope。',
+         'Internal Agent API {value}认证或授权失败，请检查凭证、订阅和 Scope。'),
     )
     for pattern, template in patterns:
         match = re.fullmatch(pattern, message)
         if match:
             return t__setting(template).format(value=t__setting(match[1]))
-    match = re.fullmatch(r'Columbus (Token 获取|Agent 请求)失败（HTTP (\d+)），请联系管理员。', message)
+    match = re.fullmatch(r'Internal Agent API (Token 获取|Agent 请求)失败（HTTP (\d+)），请联系管理员。', message)
     if match:
-        return t__setting('Columbus {stage}失败（HTTP {code}），请联系管理员。').format(
+        return t__setting('Internal Agent API {stage}失败（HTTP {code}），请联系管理员。').format(
             stage=t__setting(match[1]), code=match[2])
     return t__setting(message)
 
@@ -43,32 +43,94 @@ def _require_admin():
     return access
 
 
-def _load_columbus_fields(options):
+def _load_internal_agent_fields(options):
     for key in ('agent_id', 'tenant_id', 'client_id', 'scope', 'client_secret'):
-        set_props('agent-columbus-' + key, {
+        set_props('agent-internal-agent-' + key, {
             'value': '' if key == 'client_secret' else options.get(key, ''),
         })
 
 
 @app.callback(
-    Output('agent-columbus-fields', 'hidden'),
+    Output('agent-internal-agent-fields', 'hidden'),
     Output('agent-provider-model-field', 'hidden'),
     Input('agent-provider-kind', 'value'),
 )
 def show_provider_fields(provider_id):
     _require_admin()
-    return provider_id != 'columbus_agent', provider_id == 'columbus_agent'
+    return provider_id != 'internal_agent', provider_id in ('internal_agent', 'enterprise_models')
+
+
+@app.callback(
+    Output('agent-enterprise-fields', 'hidden'),
+    Output('agent-provider-key-field', 'hidden'),
+    Output('agent-provider-url', 'disabled'),
+    Input('agent-provider-kind', 'value'),
+)
+def show_enterprise_fields(provider_id):
+    _require_admin()
+    enterprise = provider_id == 'enterprise_models'
+    if enterprise:
+        from common.enterprise_models_credentials import require_access
+        from common.enterprise_models_provider import configured_endpoint
+
+        try:
+            require_access(_require_admin())
+            endpoint = configured_endpoint()
+        except AgentError as error:
+            endpoint = ''
+            set_props('agent-provider-status', {'children': translate_provider_message(str(error))})
+        set_props('agent-provider-url', {'value': endpoint})
+        set_props('agent-provider-key', {'value': ''})
+    return not enterprise, enterprise, enterprise
+
+
+@app.callback(
+    Output('agent-enterprise-model', 'options'),
+    Output('agent-enterprise-model', 'value'),
+    Input('agent-enterprise-models', 'value'),
+    State('agent-provider-model', 'value'),
+)
+def update_enterprise_models(text, selected):
+    _require_admin()
+    models = list(dict.fromkeys(item.strip() for item in (text or '').splitlines() if item.strip()))
+    return ([{'label': model, 'value': model} for model in models],
+            selected if selected in models else (models[0] if models else None))
+
+
+@app.callback(
+    Output('agent-enterprise-login-status', 'children'),
+    Input('agent-enterprise-check', 'nClicks'),
+    prevent_initial_call=True,
+)
+def check_enterprise_login(clicks):
+    if not clicks:
+        raise PreventUpdate
+    try:
+        from common.enterprise_models_credentials import read_credential, require_access
+        from common.enterprise_models_provider import configured_endpoint
+        from database.sql_db.repositories.agent_provider_repository import credential_rejected
+
+        require_access(_require_admin())
+        configured_endpoint()
+        credential = read_credential()
+        if credential_rejected(credential.version):
+            raise AgentError('Enterprise Models 登录已失效，请重新完成企业 AI 登录。')
+        return t__setting('登录文件可用，有效期至 {expiry}（尚未验证上游）。').format(
+            expiry=credential.expires_at.isoformat())
+    except AgentError as error:
+        return translate_provider_message(str(error))
 
 
 def _refresh_list(selected=None):
-    profiles = agent_provider_repository.list_profiles()
+    access = _require_admin()
+    profiles = agent_provider_repository.list_profiles(access)
     options = [{'label': row['name'], 'value': row['profile_id']} for row in profiles]
     chosen = selected if any(row['profile_id'] == selected for row in profiles) else (
         profiles[0]['profile_id'] if profiles else None)
     set_props('agent-provider-profile-list', {'options': options, 'value': chosen})
-    set_props('agent-provider-profile', {'options': agent_provider_repository.profile_options()})
+    set_props('agent-provider-profile', {'options': agent_provider_repository.profile_options(access)})
     set_props('agent-provider-count', {'children': t__setting('{count} / 12 个配置档').format(count=len(profiles))})
-    status = model_status(agent_provider_repository.default_profile_id())
+    status = model_status(agent_provider_repository.default_profile_id(), access=access)
     set_props('agent-config-live-status', {'children': status['model'] or t__setting('尚未连接')})
     set_props('agent-config-live-detail', {'children': translate_provider_message(status['message'])})
 
@@ -83,8 +145,8 @@ def _refresh_list(selected=None):
 )
 def initialize_provider_profiles(_interval, _refresh, selected):
     try:
-        _require_admin()
-        profiles = agent_provider_repository.list_profiles()
+        access = _require_admin()
+        profiles = agent_provider_repository.list_profiles(access)
         options = [{'label': row['name'], 'value': row['profile_id']} for row in profiles]
         if ctx.triggered_id == 'agent-provider-refresh' and selected in [row['profile_id'] for row in profiles]:
             return options, selected
@@ -113,23 +175,27 @@ def initialize_provider_profiles(_interval, _refresh, selected):
 )
 def load_provider_profile(profile_id, add_clicks):
     try:
-        _require_admin()
+        access = _require_admin()
         if ctx.triggered_id == 'agent-provider-add':
             if not add_clicks:
                 raise PreventUpdate
             providers = registered_provider_ids()
             provider = 'openai_compatible' if 'openai_compatible' in providers else (
                 providers[0] if providers else '')
-            _load_columbus_fields({})
+            _load_internal_agent_fields({})
             return None, '', provider or None, '', '', '', False, t__setting('新建配置：保存前请先测试连接。')
         if not profile_id:
             raise PreventUpdate
-        profile = agent_provider_repository.get_profile(profile_id)
-        _load_columbus_fields(profile.get('provider_options', {}))
+        profile = agent_provider_repository.get_profile(profile_id, access=access)
+        _load_internal_agent_fields(profile.get('provider_options', {}))
+        if profile['provider_id'] == 'enterprise_models':
+            set_props('agent-enterprise-models', {'value': '\n'.join(profile['provider_options']['models'])})
+            set_props('agent-enterprise-model', {'value': profile['model']})
         return (
             profile['profile_id'], profile['name'], profile['provider_id'],
             profile['base_url'], profile['model'], '', profile['is_default'],
-            t__setting('凭证已安全保存；更新凭证时填写新值，留空将保留现有凭证。'),
+            t__setting('本机登录文件只读，不复制 Token。') if profile['provider_id'] == 'enterprise_models'
+            else t__setting('凭证已安全保存；更新凭证时填写新值，留空将保留现有凭证。'),
         )
     except PreventUpdate:
         raise
@@ -155,35 +221,45 @@ def load_provider_profile(profile_id, add_clicks):
     State('agent-provider-key', 'value'),
     State('agent-provider-default', 'checked'),
     State('agent-provider-refresh', 'data'),
-    State('agent-columbus-agent_id', 'value'),
-    State('agent-columbus-tenant_id', 'value'),
-    State('agent-columbus-client_id', 'value'),
-    State('agent-columbus-scope', 'value'),
-    State('agent-columbus-client_secret', 'value'),
+    State('agent-internal-agent-agent_id', 'value'),
+    State('agent-internal-agent-tenant_id', 'value'),
+    State('agent-internal-agent-client_id', 'value'),
+    State('agent-internal-agent-scope', 'value'),
+    State('agent-internal-agent-client_secret', 'value'),
+    State('agent-enterprise-models', 'value'),
+    State('agent-enterprise-model', 'value'),
     prevent_initial_call=True,
 )
 def manage_provider_profile(
     test_clicks, save_clicks, default_clicks, delete_clicks,
     profile_id, name, provider_id, base_url, model, api_key, make_default, refresh,
     agent_id=None, tenant_id=None, client_id=None, scope=None, client_secret=None,
+    enterprise_models=None, enterprise_model=None,
 ):
     try:
-        _require_admin()
+        access = _require_admin()
         options = {
             key: (value or '').strip()
             for key, value in (
                 ('agent_id', agent_id), ('tenant_id', tenant_id), ('client_id', client_id),
                 ('scope', scope), ('client_secret', client_secret),
             )
-        } if provider_id == 'columbus_agent' else {}
+        } if provider_id == 'internal_agent' else {}
+        if provider_id == 'enterprise_models':
+            from common.enterprise_models_provider import DEFAULT_MODELS
+
+            options = {'models': list(dict.fromkeys(
+                item.strip() for item in (enterprise_models or '').splitlines() if item.strip()))
+                if enterprise_models is not None else list(DEFAULT_MODELS)}
+            model = enterprise_model or model
         if ctx.triggered_id == 'agent-provider-test':
             if not test_clicks:
                 raise PreventUpdate
             settings = agent_provider_repository.prepare_settings(
-                profile_id, provider_id, base_url or '', model or '', api_key, options,
+                profile_id, provider_id, base_url or '', model or '', api_key, options, access=access,
             )
             settings.validate()
-            result = test_provider_connection(settings)
+            result = test_provider_connection(settings, access=access)
             return t__setting('{message}（{model}）').format(
                 message=translate_provider_message(result['message']), model=result['model']), no_update
 
@@ -192,23 +268,25 @@ def manage_provider_profile(
                 raise PreventUpdate
             saved_id = agent_provider_repository.save_profile(
                 profile_id, name, provider_id, base_url, model or '', api_key, make_default is True,
-                provider_options=options,
+                provider_options=options, access=access,
             )
             _refresh_list(saved_id)
             set_props('agent-provider-edit-id', {'data': saved_id})
             set_props('agent-provider-key', {'value': ''})
-            set_props('agent-columbus-client_secret', {'value': ''})
+            set_props('agent-internal-agent-client_secret', {'value': ''})
             set_props('agent-provider-default', {
-                'checked': agent_provider_repository.get_profile(saved_id)['is_default'],
+                'checked': agent_provider_repository.get_profile(saved_id, access=access)['is_default'],
             })
-            return t__setting('配置已加密保存。建议测试连接后再用于对话。'), (refresh or 0) + 1
+            message = ('配置已保存；Token 仍只保留在本机登录文件。' if provider_id == 'enterprise_models'
+                       else '配置已加密保存。建议测试连接后再用于对话。')
+            return t__setting(message), (refresh or 0) + 1
 
         if ctx.triggered_id == 'agent-provider-make-default':
             if not default_clicks:
                 raise PreventUpdate
             if not profile_id:
                 raise AgentError('请先选择一个已保存的配置。')
-            agent_provider_repository.set_default_profile(profile_id)
+            agent_provider_repository.set_default_profile(profile_id, access=access)
             _refresh_list(profile_id)
             set_props('agent-provider-default', {'checked': True})
             set_props('agent-config-live-detail', {'children': t__setting('新建对话将默认使用此服务。')})
@@ -217,9 +295,9 @@ def manage_provider_profile(
         if ctx.triggered_id == 'agent-provider-delete-confirm':
             if not delete_clicks:
                 raise PreventUpdate
-            agent_provider_repository.delete_profile(profile_id)
+            agent_provider_repository.delete_profile(profile_id, access=access)
             _refresh_list()
-            _load_columbus_fields({})
+            _load_internal_agent_fields({})
             set_props('agent-provider-edit-id', {'data': None})
             set_props('agent-provider-name', {'value': ''})
             set_props('agent-provider-key', {'value': ''})

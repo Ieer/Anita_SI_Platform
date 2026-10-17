@@ -44,11 +44,12 @@ python scripts/record_demo_video.py
 
 - 登录、动态码、OAuth2 Provider，以及用户、角色、团队和页面权限管理。
 - 多页面后台、中文/英文界面、个人资料、主题偏好和系统资源监控。
+- 普通深色模式采用中性炭黑分层底色与薄荷绿强调色，页面下部带中性灰静态渐隐透视网格；表格、图表和浮层保留实色背景，登录页保留品牌炭黑绿，浅色、高对比和系统强制颜色模式不显示网格。
 - 统一任务中心：任务概览、本机或 SSH 平台任务、运行日志、数据提取和通知。
 - 周期、Cron、单次和邮件 POP3 监听触发；任务保存后默认暂停，需显式恢复。
 - Windows 任务计划程序独立管理。不会自动导入、停用、删除或双向同步 Windows 任务。
 - 可选 Agent：默认支持 OpenAI 兼容接口，并提供可扩展 Provider 适配层、连续会话与流式问答；本地工具权限、日志授权和任务执行审批由平台服务端控制。外部 Agent 平台需按其官方协议实现 Provider，未配置时不可用。
-- 内置 Columbus 专用 Provider：OAuth2 + APIM 双重鉴权、文本完整结果问答及原生历史续接；与 OpenAI 配置档并存。上游异步任务查询、SSE 和图片协议尚未接入。
+- 内置 Internal Agent API 专用 Provider：OAuth2 + APIM 双重鉴权、文本完整结果问答及原生历史续接；与 OpenAI 配置档并存。上游异步任务查询、SSE 和图片协议尚未接入。
 - 页面助手：在监控、任务概览和运行日志页面显式加载 page-agent，辅助定位、填写和筛选；任务执行仍必须回到 Anita 审批区，不能由浏览器脚本绕过服务端权限。
 
 ## 黑客松智能运维演示
@@ -67,7 +68,7 @@ python scripts/demo_task_center.py --port 8097
 
 未配置 `SMART_AGENT_PAGE_AGENT_URL` 时使用仓库内置文件，不进行 CDN 回退。远程覆盖地址必须是无查询参数、无内嵌凭证的 HTTPS 地址。页面助手仅开放定位、填写、筛选和页面跳转能力，不能执行任务、修改权限或读取凭证。
 
-页面助手不会使用 page-agent 的公网测试模型。浏览器通过同源 `/page_agent_llm/v1/chat/completions` 访问平台代理，真实 API Key 只保留在服务端；代理强制使用平台默认的 `openai_compatible` Provider 和服务端模型名，并校验登录、工作台权限、同源请求、请求大小和并发上限。内网展示时，Web 服务器只需能够访问配置的内网 OpenAI 兼容模型。若默认 Provider 是 Columbus 或其他非 OpenAI 兼容协议，Anita 仍可使用，但页面助手会明确提示模型配置不兼容。
+页面助手不会使用 page-agent 的公网测试模型。浏览器通过同源 `/page_agent_llm/v1/chat/completions` 访问平台代理，真实 API Key 只保留在服务端；代理强制使用平台默认的 `openai_compatible` Provider 和服务端模型名，并校验登录、工作台权限、同源请求、请求大小和并发上限。内网展示时，Web 服务器只需能够访问配置的内网 OpenAI 兼容模型。若默认 Provider 是 Internal Agent API 或其他非 OpenAI 兼容协议，Anita 仍可使用，但页面助手会明确提示模型配置不兼容。
 
 推荐展示链路：打开系统监控 → 让 Anita 分析告警 → 加载页面助手进入任务概览 → 打开运行日志并筛选 → 回到 Anita 查看脱敏日志 → 生成任务提议 → 用户核对任务版本并审批 → 查看运行回执。
 
@@ -126,7 +127,11 @@ python scripts/start_ap.py --only-init
 .\start.bat
 ```
 
-`start.bat` 使用项目 `.venv` 中的 Python，显式以 `paired_paused` 模式启动；若当前环境未设置 `SMART_AGENT_SCHEDULER_RPC_SECRET`，会为本次启动临时生成，不写入文件。双击 `start.bat` 也可启动。该脚本不会安装依赖或初始化数据库。Web 默认访问地址为 `http://127.0.0.1:8090`。首次初始化会创建 `admin` 账号，初始密码为 `admin123`；首次登录后必须立即修改。`paired_paused` 不恢复已有调度任务。确认目标数据库中的任务、脚本和外部影响后，再按[任务中心指南](docs/task_center.md)决定是否恢复。
+首次初始化新库时，终端会隐藏输入并确认唯一的 `admin` 密码（16 到 1024 个字符），不再提供默认密码。无人值守初始化须由部署密钥系统注入 `SMART_AGENT_INITIAL_ADMIN_PASSWORD`；不要把口令写入命令行、配置模板或版本库，初始化后从进程环境清除。已有管理员的密码、状态和角色不会因重复初始化被重置。
+
+`start.bat` 使用项目 `.venv` 中的 Python，显式以 `paired_paused` 模式启动；若当前环境未设置 `SMART_AGENT_SCHEDULER_RPC_SECRET`，会为本次启动临时生成，不写入文件。双击 `start.bat` 也可启动。该脚本不会安装依赖或初始化数据库。Web 默认访问地址为 `http://127.0.0.1:8090`。`paired_paused` 不恢复已有调度任务。确认目标数据库中的任务、脚本和外部影响后，再按[任务中心指南](docs/task_center.md)决定是否恢复。
+
+新密码使用带随机盐的 scrypt 保存；旧 SHA-256 存储在成功密码验证时自动升级，无需改表或重置现有账号。长期不登录的账号应安排密码重置；历史默认口令仍须由管理员主动更改。浏览器登录摘要仍属于凭据，远程部署必须使用 HTTPS。详见[密码迁移说明](docs/security_audit.md#密码存储与迁移)。
 
 只运行 Web、不启动 scheduler：
 
@@ -204,7 +209,7 @@ $env:SMART_AGENT_API_KEY = '本机环境中的真实密钥'
 
 需要接入 Dify、LangGraph Server 或其他外部 Agent 平台时，先确认目标平台的 API 类型和会话/流协议；仅当明确兼容 Chat Completions 时才能直接使用默认 Provider。否则按[Agent Provider 接入模板](docs/agent_provider_integration.md)实现服务端适配器、通过 `SMART_AGENT_PROVIDER_MODULE` 注册后重启 Web 服务，再由管理员在 Agent 接入页面创建对应配置档。该模板不代表特定平台已完成联调。
 
-Columbus 已有内置 `columbus_agent`，无需扩展模块。管理员选择“Columbus Agent”，填写 v5 服务根地址、APIM Subscription Key、Agent ID、Tenant ID、Client ID、Client Secret 和 Scope。两个凭证加密保存、留空保留且不会回显；Access Token 自动获取和缓存。多轮要求服务返回原生 `messages`：缺少时可显示首轮回答，但下一轮会明确拒绝不可靠的续接。连接测试会真实调用远端 Agent，请优先使用只读 Agent。详见[Columbus 接入边界](docs/agent_provider_integration.md#columbus-专用-provider)。
+Internal Agent API 已有内置 `internal_agent`，无需扩展模块。管理员选择“Internal Agent API”，填写 v5 服务根地址、APIM Subscription Key、Agent ID、Tenant ID、Client ID、Client Secret 和 Scope。两个凭证加密保存、留空保留且不会回显；Access Token 自动获取和缓存。多轮要求服务返回原生 `messages`：缺少时可显示首轮回答，但下一轮会明确拒绝不可靠的续接。连接测试会真实调用远端 Agent，请优先使用只读 Agent。详见[Internal Agent API 接入边界](docs/agent_provider_integration.md#internal_agent-专用-provider)。
 
 ## 测试
 
@@ -213,6 +218,32 @@ python -m pytest tests -q
 ```
 
 浏览器验收为显式 opt-in，需要 Playwright 和 Chromium；具体环境变量和测试范围见[任务中心指南](docs/task_center.md#隔离演示与浏览器验收)。测试结果不代表真实 SSH、通知供应商、第三方 OAuth2、MySQL 生产迁移或 Windows 任务生命周期已联调。
+
+### 可复现交付检查
+
+交付基线为 Windows / Python 3.11。`requirements_win.txt` 和 `requirements_dev.txt` 是人工维护的直接依赖，配套 `.lock` 文件固定完整依赖及下载哈希。锁定不等于安全认证，不支持直接用于其他操作系统或 Python 版本。
+
+建议在单独的验证环境运行，避免修改正在使用的服务环境：
+
+```powershell
+python -m venv cache/verify-venv
+.\cache\verify-venv\Scripts\python.exe -m pip install --require-hashes -r requirements_dev.lock
+.\cache\verify-venv\Scripts\python.exe scripts/check_ci.py
+.\cache\verify-venv\Scripts\python.exe -m playwright install --only-shell chromium
+.\cache\verify-venv\Scripts\python.exe scripts/check_ci.py --browser-smoke
+```
+
+`check_ci.py` 使用临时配置、随机密钥和 SQLite，清除继承的模型、运行白名单与真实探测开关，不读取真实 INI 或启动 scheduler。默认执行依赖一致性、聚焦静态规则、自定义页面契约和完整默认回归；浏览器模式只执行隔离冒烟用例，不代表全站浏览器验收。报告位于 `cache/report/ci/`。
+
+GitHub 工作流分别执行回归和依赖审计，并上传报告。审计发现漏洞或无法完成查询时会失败，不会通过 `continue-on-error` 或忽略漏洞来制造绿灯；启用分支保护时，应同时将两个 job 设为必需检查。
+
+更新依赖时，先审查直接版本与兼容性，再重新生成锁文件并在全新环境运行上述检查：
+
+```powershell
+python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --no-emit-trusted-host --output-file=requirements_win.lock requirements_win.txt
+python -m piptools compile --generate-hashes --allow-unsafe --strip-extras --no-emit-index-url --no-emit-trusted-host --output-file=requirements_dev.lock requirements_dev.txt
+python -m pip_audit -r requirements_win.lock --no-deps --disable-pip --strict --require-hashes
+```
 
 ## 文档
 

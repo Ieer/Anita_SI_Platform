@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -26,24 +27,48 @@ def tool_call(name, arguments):
 
 
 class AgentTests(unittest.TestCase):
+    def test_internal_agent_environment_uses_new_provider_and_credential_prefix(self):
+        from common.agent import ModelSettings
+        from common.agent_providers import registered_provider_ids
+
+        options = {
+            'agent_id': '11111111-1111-4111-8111-111111111111',
+            'tenant_id': '22222222-2222-4222-8222-222222222222',
+            'client_id': '33333333-3333-4333-8333-333333333333',
+            'client_secret': 'fake-client-secret', 'scope': 'api://resource/.default',
+        }
+        with patch.dict('os.environ', {
+            'SMART_AGENT_PROVIDER': 'internal_agent',
+            'SMART_AGENT_BASE_URL': 'https://internal-agent.invalid/v5',
+            'SMART_AGENT_API_KEY': 'fake-subscription',
+            **{'SMART_AGENT_INTERNAL_AGENT_' + key.upper(): value for key, value in options.items()},
+        }, clear=True):
+            settings = ModelSettings.from_environment()
+        self.assertEqual(settings.provider, 'internal_agent')
+        self.assertEqual(settings.provider_options, options)
+        self.assertEqual(settings.base_url, 'https://internal-agent.invalid/v5')
+        self.assertIn('internal_agent', registered_provider_ids())
+        self.assertNotIn('fake-client-secret', repr(settings))
+
     def test_provider_settings_localization_preserves_protocol_details(self):
         import re
         from dash_callback.application.setting_.agent_provider_c import translate_provider_message
         from server import server
 
         messages = [
+            ('企业内部 Agent 接口', 'Internal Agent API'),
             ('请填写 1 到 64 个字符的配置名称。', 'Enter a profile name between 1 and 64 characters.'),
             ('最多保存 12 个 Agent 配置。', 'You can save up to 12 Agent profiles.'),
-            ('Columbus Agent ID 必须是有效 UUID。', 'Columbus Agent ID must be a valid UUID.'),
-            ('请填写有效的 Columbus Scope。', 'Enter a valid Columbus Scope.'),
+            ('Internal Agent API Agent ID 必须是有效 UUID。', 'Internal Agent API Agent ID must be a valid UUID.'),
+            ('请填写有效的 Internal Agent API Scope。', 'Enter a valid Internal Agent API Scope.'),
             ('Provider“custom_agent”未在服务端注册。', 'Provider "custom_agent" is not registered on the server.'),
             ('未注册的 Agent Provider：custom_agent', 'Unregistered Agent provider: custom_agent'),
-            ('Columbus Token 获取认证或授权失败，请检查凭证、订阅和 Scope。',
-             'Columbus token retrieval: authentication or authorization failed. Check credentials, subscription and Scope.'),
-            ('Columbus Agent 请求失败（HTTP 502），请联系管理员。',
-             'Columbus Agent request failed (HTTP 502). Contact an administrator.'),
-            ('Columbus 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。',
-             'Columbus timed out. The remote task may still be running. Check its status before retrying; do not submit it again.'),
+            ('Internal Agent API Token 获取认证或授权失败，请检查凭证、订阅和 Scope。',
+             'Internal Agent API token retrieval: authentication or authorization failed. Check credentials, subscription and Scope.'),
+            ('Internal Agent API Agent 请求失败（HTTP 502），请联系管理员。',
+             'Internal Agent API Agent request failed (HTTP 502). Contact an administrator.'),
+            ('Internal Agent API 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。',
+             'Internal Agent API timed out. The remote task may still be running. Check its status before retrying; do not submit it again.'),
         ]
         for source, english in messages:
             with self.subTest(source=source):
@@ -162,6 +187,19 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(granted['proposals'], [])
         self.assertIn('不是模型生成', granted['answer'])
 
+    def test_demo_connection_check_never_creates_a_real_provider(self):
+        from common.agent import AgentError, ModelSettings
+        from scripts.demo_task_center import DEMO_AGENT_MODEL, demo_test_provider_connection
+
+        settings = ModelSettings('fake-demo-key', 'demo', 'https://demo.invalid/v1')
+        with patch('common.agent_providers.create_provider') as create_provider:
+            result = demo_test_provider_connection(settings)
+            with self.assertRaises(AgentError):
+                demo_test_provider_connection(ModelSettings('', 'demo'))
+        create_provider.assert_not_called()
+        self.assertEqual(result['model'], DEMO_AGENT_MODEL)
+        self.assertIn('未请求外部服务', result['message'])
+
     def test_structured_redaction_preserves_valid_trace_json(self):
         from common.agent import redact_structure
 
@@ -269,12 +307,16 @@ class AgentTests(unittest.TestCase):
         response = server.test_client().get(LOCAL_PAGE_AGENT_URL)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'PageAgent', response.data)
+        self.assertNotIn(LOCAL_PAGE_AGENT_URL, server.test_client().get('/').get_data(as_text=True))
         with server.test_request_context('/'), \
                 patch('common.utilities.util_menu_access.get_menu_access',
                       return_value=access('工作台-页面')), \
                 patch.dict(os.environ, {}, clear=True):
-            loaded_url, _, _, disabled = load_page_agent(1)
+            loaded_url, message, status_class, disabled = load_page_agent(1)
         self.assertEqual(loaded_url, LOCAL_PAGE_AGENT_URL + '?autoInit=false')
+        self.assertIn('page-agent-status-loading', status_class)
+        self.assertNotIn('page-agent-status-ready', status_class)
+        self.assertNotIn('已连接', message)
         self.assertTrue(disabled)
 
     def test_page_agent_proxy_uses_server_side_openai_credentials(self):
@@ -627,7 +669,7 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(result['message'], '连接成功，服务已返回测试回答。')
         self.assertNotIn('tools', client.chat.completions.create.call_args.kwargs)
 
-    def _columbus_profile(self):
+    def _internal_agent_profile(self):
         from database.sql_db.repositories import agent_provider_repository as profiles
 
         options = {
@@ -637,28 +679,28 @@ class ConversationTests(unittest.TestCase):
             'client_secret': 'repository-test-client-secret', 'scope': 'api://test/.default',
         }
         profile_id = profiles.save_profile(
-            None, 'Columbus', 'columbus_agent', 'https://columbus.invalid/v5', '',
+            None, 'Internal Agent API', 'internal_agent', 'https://internal-agent.invalid/v5', '',
             'repository-test-subscription', provider_options=options)
         return profile_id, options
 
-    def test_columbus_profile_encrypts_both_secrets_and_blank_edit_preserves_them(self):
+    def test_internal_agent_profile_encrypts_both_secrets_and_blank_edit_preserves_them(self):
         import json
         from database.sql_db.repositories import agent_provider_repository as profiles
         from database.sql_db.entity.table_agent import AgentProviderOptions
 
-        profile_id, options = self._columbus_profile()
+        profile_id, options = self._internal_agent_profile()
         public = profiles.get_profile(profile_id)
         self.assertNotIn('client_secret', json.dumps(public))
         encrypted = AgentProviderOptions.get_by_id(profile_id).encrypted_options
         self.assertNotIn(options['client_secret'], encrypted)
         edited = {key: value for key, value in options.items() if key != 'client_secret'}
-        profiles.save_profile(profile_id, 'Renamed', 'columbus_agent', 'https://columbus.invalid/v5',
+        profiles.save_profile(profile_id, 'Renamed', 'internal_agent', 'https://internal-agent.invalid/v5',
                               '', '', provider_options=edited)
         private = profiles.get_profile(profile_id, include_secret=True)
         self.assertEqual(private['provider_options'], options)
         self.assertEqual(private['api_key'], 'repository-test-subscription')
 
-    def test_legacy_profiles_work_when_columbus_tables_are_created_on_upgrade(self):
+    def test_legacy_profiles_work_when_internal_agent_tables_are_created_on_upgrade(self):
         from database.sql_db.repositories import agent_provider_repository as profiles
         from database.sql_db.entity.table_agent import AgentProviderOptions, AgentProviderState
 
@@ -678,7 +720,7 @@ class ConversationTests(unittest.TestCase):
         from database.sql_db.repositories import agent_provider_repository as profiles
         from database.sql_db.entity.table_agent import AgentProviderState
 
-        profile_id, options = self._columbus_profile()
+        profile_id, options = self._internal_agent_profile()
         settings = profiles.resolve_profile_settings(profile_id)
         conversation = self.repository.create_conversation('alice')
         turn, _ = self.repository.begin_turn('alice', conversation, 'First')
@@ -692,25 +734,25 @@ class ConversationTests(unittest.TestCase):
             self.repository.get_provider_state('bob', conversation, settings.remote_session_key)
         turn, _ = self.repository.begin_turn('alice', conversation, 'Next')
         with self.assertRaisesRegex(AgentError, '正在处理'):
-            profiles.save_profile(profile_id, 'Edited', 'columbus_agent', 'https://changed.invalid/v5',
+            profiles.save_profile(profile_id, 'Edited', 'internal_agent', 'https://changed.invalid/v5',
                                   '', '', provider_options=options)
         self.repository.finish_turn('alice', conversation, turn, 'Failed', failed=True,
                                     provider_id=settings.remote_session_key,
                                     provider_state={'messages': [{'text': 'invalid advancement'}]})
         self.assertEqual(self.repository.get_provider_state('alice', conversation, settings.remote_session_key), state)
-        profiles.save_profile(profile_id, 'Edited', 'columbus_agent', 'https://changed.invalid/v5',
+        profiles.save_profile(profile_id, 'Edited', 'internal_agent', 'https://changed.invalid/v5',
                               '', '', provider_options=options)
         self.assertIsNone(self.repository.get_provider_state('alice', conversation, settings.remote_session_key))
 
-    def test_columbus_sse_route_persists_native_history_across_two_turns(self):
+    def test_internal_agent_sse_route_persists_native_history_across_two_turns(self):
         import json
         import httpx
-        from common.columbus_provider import ColumbusProvider, _tokens
+        from common.internal_agent_provider import InternalAgentProvider, _tokens
         from database.sql_db.repositories import agent_provider_repository as profiles
         from app import server
 
         _tokens.clear()
-        profile_id, _ = self._columbus_profile()
+        profile_id, _ = self._internal_agent_profile()
         conversation = self.repository.create_conversation('probe')
         calls = []
 
@@ -721,9 +763,9 @@ class ConversationTests(unittest.TestCase):
                 })
             calls.append(json.loads(request.content))
             return httpx.Response(200, json={
-                'response': {'status': 'SUCCESS', 'model': 'columbus-test', 'output': [{
+                'response': {'status': 'SUCCESS', 'model': 'internal_agent-test', 'output': [{
                     'role': 'assistant', 'type': 'message',
-                    'content': [{'type': 'output_text', 'text': 'Columbus reply'}],
+                    'content': [{'type': 'output_text', 'text': 'Internal Agent API reply'}],
                 }]},
                 'messages': [{'role': 'assistant', 'native': f'turn-{len(calls)}'}],
             })
@@ -731,7 +773,7 @@ class ConversationTests(unittest.TestCase):
         with httpx.Client(transport=httpx.MockTransport(transport)) as client, \
                 patch('common.utilities.util_menu_access.get_menu_access', return_value=access('工作台-页面')), \
                 patch('common.agent_providers.create_provider',
-                      side_effect=lambda settings, **kwargs: ColumbusProvider(settings, client)):
+                      side_effect=lambda settings, **kwargs: InternalAgentProvider(settings, client)):
             for prompt in ('First', 'Second'):
                 response = server.test_client().post('/agent_stream', json={
                     'conversation_id': conversation, 'profile_id': profile_id,
@@ -746,6 +788,135 @@ class ConversationTests(unittest.TestCase):
                          'turn-2')
         profiles.delete_profile(profile_id)
         self.assertIsNone(self.repository.get_provider_state('probe', conversation, key))
+
+    def enterprise_profile(self):
+        from datetime import datetime, timedelta, timezone
+        from database.sql_db.repositories import agent_provider_repository as profiles
+        from common.enterprise_models_credentials import PREFIX
+        from common.enterprise_models_provider import configured_endpoint
+
+        token_file = Path(self.folder.name) / 'token.dat'
+        token_file.write_text(json.dumps({
+            'access_token': 'fake-enterprise-access', 'refresh_token': 'fake-never-use-refresh',
+            'token_expiry': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        }), encoding='utf-8')
+        environment = patch.dict(os.environ, {
+            PREFIX + 'TOKEN_FILE': str(token_file), PREFIX + 'TOKEN_TIMEZONE': 'UTC',
+            PREFIX + 'OWNER': 'probe',
+            PREFIX + 'ENDPOINT': 'https://models.test.invalid/v1/chat/stream',
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+        admin = access('工作台-页面', 'Agent配置-页面')
+        admin.user_info.user_roles = ['admin']
+        profile = profiles.save_profile(None, 'Enterprise test', 'enterprise_models', configured_endpoint(),
+                                       'gpt-5-mini', '', True, access=admin)
+        return profiles, profile, admin, token_file
+
+    def test_enterprise_file_credentials_are_not_persisted_or_available_to_other_admins(self):
+        from database.sql_db.entity.table_agent import AgentProviderProfile
+        from common.enterprise_models_credentials import EnterpriseAccessError
+
+        profiles, profile, admin, _token_file = self.enterprise_profile()
+        self.assertEqual(profiles.resolve_profile_settings(profile, access=admin).api_key, 'fake-enterprise-access')
+        row = AgentProviderProfile.get_by_id(profile)
+        self.assertEqual(profiles._decrypt(row.encrypted_api_key), '')
+        self.assertNotIn('fake-enterprise-access', str(profiles.get_profile(profile, access=admin)))
+        other = access('工作台-页面', 'Agent配置-页面')
+        other.user_info.user_roles = ['admin']
+        other.user_name = 'bob'
+        with patch('common.enterprise_models_credentials.read_credential') as read:
+            self.assertEqual(profiles.profile_options(other), [])
+            with self.assertRaises(EnterpriseAccessError):
+                profiles.resolve_profile_settings(profile, access=other)
+            read.assert_not_called()
+
+    def test_enterprise_forged_http_profile_is_forbidden_without_reading_file(self):
+        from app import server
+
+        _profiles, profile, _admin, _token_file = self.enterprise_profile()
+        conversation = self.repository.create_conversation('probe')
+        with patch('common.utilities.util_menu_access.get_menu_access', return_value=access('工作台-页面')), \
+                patch('common.enterprise_models_credentials.read_credential') as read:
+            response = server.test_client().post('/agent_stream', json={
+                'conversation_id': conversation, 'profile_id': profile,
+                'prompt': 'Forbidden', 'allow_log_export': False,
+            }, buffered=True)
+            self.assertEqual(response.status_code, 403)
+            read.assert_not_called()
+        self.assertEqual(self.repository.read_messages('probe', conversation), [])
+
+    def test_enterprise_two_turns_rotation_and_401_rejection(self):
+        import httpx
+        from app import server
+        from common.enterprise_models_provider import EnterpriseModelsProvider
+
+        profiles, profile, admin, token_file = self.enterprise_profile()
+        conversation = self.repository.create_conversation('probe')
+        calls = []
+        status = [200]
+
+        def transport(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(status[0], headers={'content-type': 'text/event-stream'}, text=(
+                'data: {"chatId":"native","current":[{"id":"parent","content":"Enterprise reply"}]}\n\n'
+                'data: [DONE]\n\n'))
+
+        with httpx.Client(transport=httpx.MockTransport(transport)) as client, \
+                patch('common.utilities.util_menu_access.get_menu_access', return_value=admin), \
+                patch('common.agent_providers.create_provider',
+                      side_effect=lambda settings, **kwargs: EnterpriseModelsProvider(settings, client)):
+            def send():
+                return server.test_client().post('/agent_stream', json={
+                    'conversation_id': conversation, 'profile_id': profile,
+                    'prompt': 'Question', 'allow_log_export': False,
+                }, buffered=True)
+
+            for _ in range(2):
+                self.assertIn('event: completed', send().get_data(as_text=True))
+            self.assertNotIn('chatId', calls[0])
+            self.assertEqual(calls[1]['parentId'], 'parent')
+            data = json.loads(token_file.read_text(encoding='utf-8'))
+            data['access_token'] = 'fake-rotated-access'
+            token_file.write_text(json.dumps(data), encoding='utf-8')
+            self.assertIn('event: completed', send().get_data(as_text=True))
+            self.assertNotIn('chatId', calls[2])
+            status[0] = 401
+            self.assertIn('event: error', send().get_data(as_text=True))
+            self.assertEqual(len(calls), 4)
+            self.assertEqual(send().status_code, 400)
+            self.assertEqual(len(calls), 4)
+            with self.assertRaises(AgentError):
+                profiles.resolve_profile_settings(profile, access=admin)
+
+    def test_enterprise_changed_file_cannot_finish_old_turn(self):
+        profiles, profile, admin, token_file = self.enterprise_profile()
+        settings = profiles.resolve_profile_settings(profile, access=admin)
+        conversation = self.repository.create_conversation('probe')
+        turn, _history = self.repository.begin_turn('probe', conversation, 'Question')
+        self.repository.prepare_provider_state('probe', conversation, turn, settings)
+        data = json.loads(token_file.read_text(encoding='utf-8'))
+        data['access_token'] = 'different-account-token'
+        token_file.write_text(json.dumps(data), encoding='utf-8')
+        with self.assertRaises(AgentError):
+            self.repository.finish_turn('probe', conversation, turn, 'Old answer',
+                provider_id=settings.remote_session_key, provider_state={
+                    'provider': 'enterprise_models',
+                    'credential_version': settings.provider_options['_credential_version'],
+                    'chatId': 'old', 'parentId': 'old',
+                })
+        self.assertEqual(len(self.repository.read_messages('probe', conversation)), 1)
+
+    def test_enterprise_incomplete_turn_requires_new_context(self):
+        profiles, profile, admin, _token_file = self.enterprise_profile()
+        settings = profiles.resolve_profile_settings(profile, access=admin)
+        conversation = self.repository.create_conversation('probe')
+        turn, _history = self.repository.begin_turn('probe', conversation, 'Question')
+        self.repository.prepare_provider_state('probe', conversation, turn, settings)
+        self.repository.finish_turn('probe', conversation, turn, 'Connection interrupted', failed=True)
+        turn, _history = self.repository.begin_turn('probe', conversation, 'Do not replay')
+        with self.assertRaises(AgentError):
+            self.repository.prepare_provider_state('probe', conversation, turn, settings)
 
     def test_agent_stream_route_persists_response_and_remote_session(self):
         from server import server

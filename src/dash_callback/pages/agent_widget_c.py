@@ -31,9 +31,9 @@ def load_page_agent(clicks):
         message = t__dashboard('页面助手地址无效，请联系管理员配置 HTTPS 地址。')
         return no_update, message, 'page-agent-status page-agent-status-error', False
     return (
-        f'{url}?autoInit=false',
-        t__dashboard('页面助手已加载：可定位、填写和筛选；执行任务仍需平台审批。'),
-        'page-agent-status page-agent-status-ready',
+        f'{url}?autoInit=false' + (f'&retry={clicks}' if clicks > 1 else ''),
+        t__dashboard('正在加载页面辅助…'),
+        'page-agent-status page-agent-status-loading',
         True,
     )
 
@@ -58,8 +58,10 @@ def initialize_conversations(_intervals, new_clicks):
             conversations = agent_repository.list_conversations(access.user_name)
         else:
             selected = conversations[0]['conversation_id']
-        profile_options = agent_provider_repository.profile_options()
+        profile_options = agent_provider_repository.profile_options(access)
         profile_id = agent_provider_repository.get_conversation_profile(access.user_name, selected)
+        if profile_id not in {option['value'] for option in profile_options}:
+            profile_id = None
         set_props('agent-conversation-title', {'data-profile-id': profile_id or ''})
         return ([{'label': row['title'], 'value': row['conversation_id']} for row in conversations],
                 selected, profile_options, profile_id)
@@ -109,7 +111,9 @@ def handle_conversation(selected, clicks, _stream_refresh, active, prompt, conse
             messages = agent_repository.read_messages(access.user_name, selected)
             selected_profile = agent_provider_repository.get_conversation_profile(access.user_name, selected)
             set_props('agent-conversation-title', {'data-profile-id': selected_profile or ''})
-            status = model_status(selected_profile)
+            status = model_status(selected_profile, access=access)
+            if selected_profile not in {option['value'] for option in agent_provider_repository.profile_options(access)}:
+                selected_profile = None
             set_props('agent-model-status', {
                 'children': status['model'] or t__dashboard('配置不可用'),
                 'className': 'agent-model-ready' if status['ready'] else 'agent-model-offline',
@@ -131,27 +135,29 @@ def handle_conversation(selected, clicks, _stream_refresh, active, prompt, conse
         set_props('agent-progress', {'children': t__dashboard('正在处理请求…')})
         selected_profile = profile_id or agent_provider_repository.get_conversation_profile(
             access.user_name, selected)
-        settings = (agent_provider_repository.resolve_profile_settings(selected_profile)
+        settings = (agent_provider_repository.resolve_profile_settings(selected_profile, access=access)
                     if selected_profile and selected_profile != 'environment'
-                    else ModelSettings.from_environment())
+                else ModelSettings.from_environment().for_access(access))
         turn_id, history = agent_repository.begin_turn(access.user_name, selected, prompt)
-        provider_state = agent_repository.get_provider_state(
-            access.user_name, selected, settings.remote_session_key)
+        provider_state = agent_repository.prepare_provider_state(
+            access.user_name, selected, turn_id, settings)
         remote_id = agent_repository.get_remote_session(
             access.user_name, selected, settings.remote_session_key)
         result = run_turn(prompt, access, history, allow_log_export=consent is True,
                           access_provider=get_menu_access, remote_conversation_id=remote_id,
-                          profile_id=selected_profile, provider_state=provider_state)
+                          profile_id=selected_profile, provider_state=provider_state, resolved_settings=settings)
         current_access = get_menu_access()
         if not current_access.has_access('工作台-页面') or current_access.user_name != access.user_name:
             raise AgentError('访问权限已变更，请重新登录。')
+        settings.check_current(current_access)
         agent_repository.finish_turn(access.user_name, selected, turn_id, result['answer'],
                               result['trace'], result['model'], proposals=result.get('proposals', ()),
                               provider_id=settings.remote_session_key,
                               provider_state=result.get('provider_state'))
-        agent_repository.set_remote_session(
-            access.user_name, selected, settings.remote_session_key,
-            result.get('remote_conversation_id'))
+        if settings.provider != 'enterprise_models':
+            agent_repository.set_remote_session(
+                access.user_name, selected, settings.remote_session_key,
+                result.get('remote_conversation_id'))
         messages = agent_repository.read_messages(access.user_name, selected)
         conversations = agent_repository.list_conversations(access.user_name)
         set_props('agent-conversation-select', {'options': [
@@ -192,8 +198,8 @@ def select_conversation_provider(profile_id, conversation_id):
         access = get_menu_access()
         if not access.has_access('工作台-页面'):
             raise AgentError('没有工作台权限。')
-        agent_provider_repository.set_conversation_profile(access.user_name, conversation_id, profile_id)
-        status = model_status(profile_id)
+        agent_provider_repository.set_conversation_profile(access.user_name, conversation_id, profile_id, access=access)
+        status = model_status(profile_id, access=access)
 
         set_props('agent-conversation-title', {'data-profile-id': profile_id or ''})
         set_props('agent-model-status', {
@@ -225,7 +231,7 @@ def select_conversation_provider(profile_id, conversation_id):
     prevent_initial_call=True,
 )
 def update_send_state(conversation_id, profile_id):
-    return not conversation_id or not model_status(profile_id)['ready']
+    return not conversation_id or not model_status(profile_id, access=get_menu_access())['ready']
 
 
 @app.callback(

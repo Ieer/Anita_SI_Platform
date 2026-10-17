@@ -49,6 +49,7 @@ from database.sql_db.entity.table_user import SysGroup
 SUFFIX = {'Bat': '.bat', 'Shell': '.sh', 'Python': '.py'}
 RUN_CMD = {'Bat': ['cmd', '/c'], 'Shell': ['sh'], 'Python': ['python']}
 NO_CATCHUP_MISFIRE_GRACE_SECONDS = 1
+scheduler: BackgroundScheduler | None = None
 
 
 def _stop_local_process(process):

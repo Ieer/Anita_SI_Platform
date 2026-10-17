@@ -14,7 +14,7 @@ from common.agent import (
     test_provider_connection as check_connection,
 )
 from common.agent_providers import AgentTurnRequest, create_provider, registered_provider_ids
-from common.columbus_provider import ColumbusProvider, _tokens
+from common.internal_agent_provider import InternalAgentProvider, _tokens
 
 
 def options():
@@ -29,14 +29,14 @@ def options():
 def settings(**changes):
     return ModelSettings(**{
         'api_key': 'test-subscription-key', 'model': '',
-        'base_url': 'https://columbus.invalid/v5',
-        'provider': 'columbus_agent', 'provider_options': options(), **changes,
+        'base_url': 'https://internal-agent.invalid/v5',
+        'provider': 'internal_agent', 'provider_options': options(), **changes,
     })
 
 
 def answer(messages=True):
     result = {'response': {
-        'status': 'SUCCESS', 'model': 'test-columbus-model',
+        'status': 'SUCCESS', 'model': 'test-internal_agent-model',
         'output': [{
             'role': 'assistant', 'type': 'message',
             'content': [{'type': 'output_text', 'text': 'Test answer'}],
@@ -57,7 +57,7 @@ def consume(events):
             return emitted, completed.value
 
 
-class ColumbusProviderTests(unittest.TestCase):
+class InternalAgentProviderTests(unittest.TestCase):
     def setUp(self):
         _tokens.clear()
         self.requests = []
@@ -77,8 +77,8 @@ class ColumbusProviderTests(unittest.TestCase):
         return httpx.Response(self.agent_status, json=self.response)
 
     def test_factory_registers_builtin_and_validates_dedicated_options(self):
-        self.assertIn('columbus_agent', registered_provider_ids())
-        self.assertIsInstance(create_provider(settings(), client=self.client), ColumbusProvider)
+        self.assertIn('internal_agent', registered_provider_ids())
+        self.assertIsInstance(create_provider(settings(), client=self.client), InternalAgentProvider)
         for key in options():
             with self.subTest(key=key):
                 invalid = options()
@@ -87,13 +87,13 @@ class ColumbusProviderTests(unittest.TestCase):
                     settings(provider_options=invalid).validate()
 
     def test_dual_auth_and_native_two_turn_history_without_local_tools(self):
-        provider = ColumbusProvider(settings(), self.client)
+        provider = InternalAgentProvider(settings(), self.client)
         executor = Mock(side_effect=AssertionError('must not execute local tools'))
         events, result = consume(provider.stream_turn(
             AgentTurnRequest('First question', history=[]), [{'name': 'local_tool'}], executor))
         payload = json.loads(self.requests[-1].content)
         self.assertEqual(str(self.requests[-1].url),
-                         'https://columbus.invalid/v5/columbus/platform/agent/message')
+                         'https://internal-agent.invalid/v5/platform/agent/message')
         self.assertEqual(self.requests[-1].headers['Authorization'], 'Bearer test-access-token')
         self.assertEqual(self.requests[-1].headers['Ocp-Apim-Subscription-Key'], 'test-subscription-key')
         self.assertEqual(payload['agentId'], options()['agent_id'])
@@ -106,7 +106,7 @@ class ColumbusProviderTests(unittest.TestCase):
         self.assertEqual(payload['history'], [])
         self.assertNotIn('tools', payload)
         self.assertEqual([event.text for event in events if event.type == 'delta'], ['Test answer'])
-        self.assertEqual(result.model, 'test-columbus-model')
+        self.assertEqual(result.model, 'test-internal_agent-model')
         consume(provider.stream_turn(AgentTurnRequest(
             'Second question', history=[], provider_state=result.provider_state), [], executor))
         self.assertEqual(json.loads(self.requests[-1].content)['history'], self.response['messages'])
@@ -115,7 +115,7 @@ class ColumbusProviderTests(unittest.TestCase):
 
     def test_expired_token_and_changed_credentials_fetch_new_tokens(self):
         self.token_lifetime = 30
-        provider = ColumbusProvider(settings(), self.client)
+        provider = InternalAgentProvider(settings(), self.client)
         for _ in range(2):
             consume(provider.stream_turn(AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(len(self.requests), 4)
@@ -123,13 +123,13 @@ class ColumbusProviderTests(unittest.TestCase):
         consume(provider.stream_turn(AgentTurnRequest('Question', []), [], Mock()))
         changed = options()
         changed['client_secret'] = 'rotated-secret'
-        consume(ColumbusProvider(settings(provider_options=changed), self.client).stream_turn(
+        consume(InternalAgentProvider(settings(provider_options=changed), self.client).stream_turn(
             AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(sum(r.url.host == 'login.microsoftonline.com' for r in self.requests), 4)
 
     def test_401_invalidates_token_but_never_replays_submission(self):
         self.agent_status = 401
-        provider = ColumbusProvider(settings(), self.client)
+        provider = InternalAgentProvider(settings(), self.client)
         with self.assertRaises(AgentError):
             consume(provider.stream_turn(AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(len(self.requests), 2)
@@ -151,13 +151,13 @@ class ColumbusProviderTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.response = body
                 with self.assertRaises(AgentError) as caught:
-                    consume(ColumbusProvider(settings(), self.client).stream_turn(
+                    consume(InternalAgentProvider(settings(), self.client).stream_turn(
                         AgentTurnRequest('Question', []), [], Mock()))
                 self.assertNotIn('private-detail', str(caught.exception))
 
     def test_documented_output_only_shape_answers_but_blocks_unsafe_continuation(self):
         self.response = answer(messages=False)
-        provider = ColumbusProvider(settings(), self.client)
+        provider = InternalAgentProvider(settings(), self.client)
         _, result = consume(provider.stream_turn(AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(result.answer, 'Test answer')
         self.assertEqual(result.provider_state, {'messages': None})
@@ -171,12 +171,12 @@ class ColumbusProviderTests(unittest.TestCase):
         self.response = {'status': 200, 'data': {
             'taskStatus': 'SUCCESS', 'taskResult': answer(),
         }}
-        _, result = consume(ColumbusProvider(settings(), self.client).stream_turn(
+        _, result = consume(InternalAgentProvider(settings(), self.client).stream_turn(
             AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(result.answer, 'Test answer')
         state = {'messages': [{'content': 'x' * 262145}]}
         with self.assertRaisesRegex(AgentError, '过大'):
-            consume(ColumbusProvider(settings(), self.client).stream_turn(
+            consume(InternalAgentProvider(settings(), self.client).stream_turn(
                 AgentTurnRequest('Question', [], provider_state=state), [], Mock()))
 
     def test_timeout_invalid_json_and_redirect_are_explicit_failures(self):
@@ -190,14 +190,14 @@ class ColumbusProviderTests(unittest.TestCase):
             with self.subTest(transport=transport), httpx.Client(
                     transport=httpx.MockTransport(transport)) as client:
                 with self.assertRaises(AgentError) as caught:
-                    consume(ColumbusProvider(settings(), client).stream_turn(
+                    consume(InternalAgentProvider(settings(), client).stream_turn(
                         AgentTurnRequest('Question', []), [], Mock()))
                 self.assertNotIn('private-detail', str(caught.exception))
 
     def test_known_credentials_are_redacted_from_answers(self):
         self.response['response']['output'][0]['content'][0]['text'] = (
             'test-client-secret test-subscription-key test-access-token')
-        _, result = consume(ColumbusProvider(settings(), self.client).stream_turn(
+        _, result = consume(InternalAgentProvider(settings(), self.client).stream_turn(
             AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(result.answer, '[REDACTED] [REDACTED] [REDACTED]')
 
@@ -216,7 +216,7 @@ class ColumbusProviderTests(unittest.TestCase):
 
         with httpx.Client(transport=httpx.MockTransport(transport)) as client:
             with self.assertRaisesRegex(AgentError, 'SSE'):
-                consume(ColumbusProvider(settings(), client).stream_turn(
+                consume(InternalAgentProvider(settings(), client).stream_turn(
                     AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(len(self.requests), 2)
 
@@ -224,17 +224,17 @@ class ColumbusProviderTests(unittest.TestCase):
         skeleton = {'messages': [{'content': ''}]}
         overhead = len(json.dumps(skeleton, ensure_ascii=False).encode('utf-8'))
         self.response['messages'] = [{'content': 'x' * (MAX_PROVIDER_STATE_BYTES - overhead)}]
-        _, result = consume(ColumbusProvider(settings(), self.client).stream_turn(
+        _, result = consume(InternalAgentProvider(settings(), self.client).stream_turn(
             AgentTurnRequest('Question', []), [], Mock()))
         self.assertEqual(len(json.dumps(result.provider_state).encode()), MAX_PROVIDER_STATE_BYTES)
         self.response['messages'][0]['content'] += 'x'
         with self.assertRaisesRegex(AgentError, '过大'):
-            consume(ColumbusProvider(settings(), self.client).stream_turn(
+            consume(InternalAgentProvider(settings(), self.client).stream_turn(
                 AgentTurnRequest('Question', []), [], Mock()))
 
-    def test_connection_test_uses_columbus_contract_without_tools(self):
+    def test_connection_test_uses_internal_agent_contract_without_tools(self):
         result = check_connection(settings(), client=self.client)
-        self.assertEqual(result['model'], 'test-columbus-model')
+        self.assertEqual(result['model'], 'test-internal_agent-model')
         self.assertNotIn('tools', json.loads(self.requests[-1].content))
 
 

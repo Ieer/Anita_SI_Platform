@@ -1,7 +1,7 @@
 # src/dash_components/create_scheduler.py
 """
 任务调度甘特图组件
-原始 Wistron RPA Empowerment System 页面风格的任务调度甘特图组件。
+原始 Enterprise RPA Empowerment System 页面风格的任务调度甘特图组件。
 直接读取app.db相关任务信息，转化为甘特图数据。
 使用 CSS Grid 和绝对定位来实现更接近原始页面的效果。
 """
@@ -236,7 +236,7 @@ def create_scheduler(
     base_date: Optional[dt.date] = None
 ) -> Component:
     """
-    創建符合原始 Wistron RPA Empowerment System 頁面風格的任務調度甘特圖。
+    創建符合原始 Enterprise RPA Empowerment System 頁面風格的任務調度甘特圖。
     使用 CSS Grid 和絕對定位來實現更接近原始頁面的效果。
     
     特點:

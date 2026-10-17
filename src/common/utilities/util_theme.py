@@ -27,10 +27,11 @@ def theme_spec(value=None, system_dark=False, login=False):
     colors = {
         'ink': '#f5f7fa' if dark else '#19282f',
         'muted': ('#e3e9ee' if high else '#b4bdc4') if dark else ('#263238' if high else '#526369'),
-        'canvas': ('#000000' if high else '#111416') if dark else ('#ffffff' if high else '#f2f4f5'),
-        'surface': ('#080808' if high else '#1b2024') if dark else '#ffffff',
-        'raised': ('#151515' if high else '#272e34') if dark else ('#ffffff' if high else '#f1f4f6'),
+        'canvas': ('#000000' if high else '#11191a' if login else '#151819') if dark else ('#ffffff' if high else '#f2f4f5'),
+        'surface': ('#080808' if high else '#1b2024' if login else '#1d2224') if dark else '#ffffff',
+        'raised': ('#151515' if high else '#272e34' if login else '#272d30') if dark else ('#ffffff' if high else '#f1f4f6'),
         'border': ('#bac8d2' if high else '#7f9098') if dark else ('#465660' if high else '#7f9098'),
+        'divider': ('#bac8d2' if high else '#7f9098' if login else '#394346') if dark else ('#465660' if high else '#7f9098'),
         'accent': accent,
         'accent-soft': '#263c42' if dark else '#e8eef2',
         'on-accent': '#081216' if dark else '#ffffff',
@@ -46,9 +47,9 @@ def theme_spec(value=None, system_dark=False, login=False):
         'colorPrimary': accent, 'colorLink': accent, 'colorText': colors['ink'],
         'colorTextSecondary': colors['muted'], 'colorTextPlaceholder': colors['muted'],
         'colorTextDisabled': colors['disabled'], 'colorBgLayout': colors['canvas'],
-        'colorBgContainer': colors['surface'], 'colorBgElevated': colors['surface'],
+        'colorBgContainer': colors['surface'], 'colorBgElevated': colors['raised'] if dark and not high and not login else colors['surface'],
         'colorFillAlter': colors['raised'], 'colorBorder': colors['border'],
-        'colorBorderSecondary': colors['border'], 'colorSuccess': colors['success'],
+        'colorBorderSecondary': colors['divider'], 'colorSuccess': colors['success'],
         'colorWarning': colors['warning'], 'colorError': colors['danger'],
         'colorInfo': colors['info'], 'colorTextLightSolid': colors['on-accent'],
         'controlOutline': accent, 'borderRadius': 6,
@@ -65,7 +66,10 @@ def theme_spec(value=None, system_dark=False, login=False):
 
 
 def browser_config():
-    return {'storageKey': STORAGE_KEY, 'defaults': DEFAULT_PREFERENCE, 'themes': {
+    return {'storageKey': STORAGE_KEY, 'defaults': DEFAULT_PREFERENCE, 'loginThemes': {
+        contrast: theme_spec({'contrast': contrast}, login=True)
+        for contrast in ('normal', 'high')
+    }, 'themes': {
         f'{mode}:{palette}:{contrast}': theme_spec(
             {'mode': mode, 'palette': palette, 'contrast': contrast})
         for mode in ('light', 'dark') for palette in PALETTES for contrast in ('normal', 'high')

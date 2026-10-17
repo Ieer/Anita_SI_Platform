@@ -38,8 +38,8 @@ class WidgetI18nTests(unittest.TestCase):
                              'The request did not complete. Check the service connection and try again.')
             self.assertEqual(translate_agent_message('User supplied text'), 'User supplied text')
             self.assertEqual(
-                translate_agent_message('Columbus Agent 请求失败（HTTP 502），请联系管理员。'),
-                'Columbus Agent request failed (HTTP 502). Contact an administrator.',
+                translate_agent_message('Internal Agent API Agent 请求失败（HTTP 502），请联系管理员。'),
+                'Internal Agent API Agent request failed (HTTP 502). Contact an administrator.',
             )
             self.assertEqual(
                 translate_agent_message('Provider“custom_agent”未在服务端注册。'),
@@ -66,9 +66,9 @@ class WidgetI18nTests(unittest.TestCase):
                          'The request did not complete. Check the service connection and try again.')
         status_pattern = next(pattern for pattern in data['patterns']
                               if 'HTTP' in pattern['pattern'])
-        self.assertIn('Columbus {stage} failed (HTTP {status})', status_pattern['template'])
+        self.assertIn('Internal Agent API {stage} failed (HTTP {status})', status_pattern['template'])
         status_match = re.fullmatch(status_pattern['pattern'],
-                                    'Columbus Agent 请求失败（HTTP 502），请联系管理员。')
+                                    'Internal Agent API Agent 请求失败（HTTP 502），请联系管理员。')
         self.assertEqual(status_match.groups(), ('Agent 请求', '502'))
 
     def test_widget_messages_actions_and_accessibility_labels_are_localized(self):

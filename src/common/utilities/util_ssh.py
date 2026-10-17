@@ -2,10 +2,10 @@ import paramiko
 import os
 
 
-def connect_ssh(hostname, port, username, password):
+def connect_ssh(hostname, port, username, password, timeout=20):
     port = int(port)
-    ssh = paramiko.SSHClient()
     timeout = max(1, int(timeout))
+    ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
     ssh.connect(

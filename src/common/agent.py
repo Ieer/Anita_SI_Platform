@@ -2,7 +2,7 @@ import json
 import hashlib
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 
 
@@ -24,13 +24,20 @@ class ModelSettings:
 
     @classmethod
     def from_environment(cls):
+        provider = os.environ.get('SMART_AGENT_PROVIDER', 'openai_compatible').strip()
+        default_url = 'https://api.openai.com/v1'
+        if provider == 'enterprise_models':
+            from common.enterprise_models_provider import configured_endpoint
+
+            default_url = configured_endpoint()
         settings = cls(
-            api_key=os.environ.get('SMART_AGENT_API_KEY', '').strip(),
+            api_key='' if provider == 'enterprise_models' else os.environ.get('SMART_AGENT_API_KEY', '').strip(),
             model=os.environ.get('SMART_AGENT_MODEL', '').strip(),
-            base_url=os.environ.get('SMART_AGENT_BASE_URL', 'https://api.openai.com/v1').strip(),
-            provider=os.environ.get('SMART_AGENT_PROVIDER', 'openai_compatible').strip(),
+            base_url=default_url if provider == 'enterprise_models' else os.environ.get(
+                'SMART_AGENT_BASE_URL', default_url).strip(),
+            provider=provider,
             provider_options={
-                key: os.environ.get('SMART_AGENT_COLUMBUS_' + key.upper(), '').strip()
+                key: os.environ.get('SMART_AGENT_INTERNAL_AGENT_' + key.upper(), '').strip()
                 for key in ('agent_id', 'tenant_id', 'client_id', 'client_secret', 'scope')
             },
         )
@@ -51,7 +58,7 @@ class ModelSettings:
         return settings
 
     def validate(self):
-        if (not self.api_key or not self.provider
+        if ((not self.api_key and self.provider != 'enterprise_models') or not self.provider
                 or (self.provider == 'openai_compatible' and not self.model)):
             raise AgentError('Agent 未配置，请在服务端设置 Provider 和对应访问凭证。')
         try:
@@ -62,13 +69,39 @@ class ModelSettings:
                 or parsed.scheme not in {'http', 'https'}
                 or (parsed.scheme == 'http' and parsed.hostname not in {'localhost', '127.0.0.1', '::1'})):
             raise AgentError('模型地址必须使用 HTTPS；仅本机服务允许 HTTP。')
-        if self.provider == 'columbus_agent':
-            from common.columbus_provider import validate_options
+        if self.provider == 'enterprise_models':
+            from common.enterprise_models_provider import configured_endpoint, validate_options
+
+            if self.base_url != configured_endpoint():
+                raise AgentError('Enterprise Models 服务地址必须与服务端配置一致。')
+            validate_options(self.model, self.provider_options)
+        if self.provider == 'internal_agent':
+            from common.internal_agent_provider import validate_options
 
             if len(self.api_key) > 8192 or any(char in self.api_key for char in '\r\n'):
-                raise AgentError('Columbus APIM Subscription Key 格式无效。')
+                raise AgentError('Internal Agent API APIM Subscription Key 格式无效。')
             validate_options(self.provider_options)
         return self
+
+    def for_access(self, access):
+        if self.provider != 'enterprise_models':
+            return self
+        from common.enterprise_models_credentials import read_credential, require_access
+        from database.sql_db.repositories.agent_provider_repository import credential_rejected
+
+        require_access(access)
+        credential = read_credential()
+        if credential_rejected(credential.version):
+            raise AgentError('Enterprise Models 登录已失效，请重新完成企业 AI 登录。')
+        return replace(self, api_key=credential.token, provider_options={
+            **self.provider_options, '_credential_version': credential.version,
+        })
+
+    def check_current(self, access):
+        if self.provider == 'enterprise_models':
+            current = self.for_access(access)
+            if current.provider_options['_credential_version'] != self.provider_options.get('_credential_version'):
+                raise AgentError('Enterprise Models 登录凭证已变更，请新建会话后重试。')
 
     @property
     def remote_session_key(self):
@@ -77,21 +110,21 @@ class ModelSettings:
         return hashlib.sha256(f'{self.provider}\0{self.profile_id}'.encode('utf-8')).hexdigest()
 
 
-def model_status(profile_id=None):
+def model_status(profile_id=None, access=None):
     try:
         if profile_id and profile_id != 'environment':
             from database.sql_db.repositories import agent_provider_repository
 
-            settings = agent_provider_repository.resolve_profile_settings(profile_id)
+            settings = agent_provider_repository.resolve_profile_settings(profile_id, access=access)
         else:
-            settings = ModelSettings.from_environment()
+            settings = ModelSettings.from_environment().for_access(access)
         from common.agent_providers import registered_provider_ids
 
         if settings.provider not in registered_provider_ids():
             raise AgentError(f'Provider“{settings.provider}”未在服务端注册。')
         return {
             'ready': True,
-            'model': settings.model or ('Columbus Agent' if settings.provider == 'columbus_agent'
+            'model': settings.model or ('Internal Agent API' if settings.provider == 'internal_agent'
                                         else settings.provider),
             'provider': settings.provider,
             'profile_id': settings.profile_id or 'environment',
@@ -237,17 +270,21 @@ SYSTEM_PROMPT = '''你是企业任务工作台助手。只能调用本次提供�
 
 def run_turn_events(
     prompt, menu_access, history=(), allow_log_export=False, client=None, access_provider=None,
-    remote_conversation_id=None, streaming=True, profile_id=None, provider_state=None,
+    remote_conversation_id=None, streaming=True, profile_id=None, provider_state=None, resolved_settings=None,
 ):
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 4000:
         raise AgentError('请输入 1 到 4000 字的消息。')
     tools = allowed_tools(menu_access, allow_log_export)
-    if profile_id and profile_id != 'environment':
+    current_access = access_provider() if access_provider is not None else menu_access
+    if resolved_settings is not None:
+        settings = resolved_settings
+        settings.check_current(current_access)
+    elif profile_id and profile_id != 'environment':
         from database.sql_db.repositories import agent_provider_repository
 
-        settings = agent_provider_repository.resolve_profile_settings(profile_id)
+        settings = agent_provider_repository.resolve_profile_settings(profile_id, access=current_access)
     else:
-        settings = ModelSettings.from_environment()
+        settings = ModelSettings.from_environment().for_access(current_access)
 
     from common.agent_providers import AgentTurnRequest, create_provider
 
@@ -264,6 +301,7 @@ def run_turn_events(
         return execute_tool(name, arguments, current_access, allow_log_export)
 
     result = yield from provider.stream_turn(request, tools, execute_permitted_tool, streaming=streaming)
+    settings.check_current(access_provider() if access_provider is not None else menu_access)
     return {
         'answer': redact(result.answer)[:8000],
         'trace': redact_structure(result.trace),
@@ -276,11 +314,11 @@ def run_turn_events(
 
 
 def run_turn(prompt, menu_access, history=(), allow_log_export=False, client=None, access_provider=None,
-             remote_conversation_id=None, profile_id=None, provider_state=None):
+             remote_conversation_id=None, profile_id=None, provider_state=None, resolved_settings=None):
     events = run_turn_events(
         prompt, menu_access, history, allow_log_export, client, access_provider,
         remote_conversation_id=remote_conversation_id, streaming=False, profile_id=profile_id,
-        provider_state=provider_state,
+        provider_state=provider_state, resolved_settings=resolved_settings,
     )
     while True:
         try:
@@ -289,7 +327,8 @@ def run_turn(prompt, menu_access, history=(), allow_log_export=False, client=Non
             return completed.value
 
 
-def test_provider_connection(settings, client=None):
+def test_provider_connection(settings, client=None, access=None):
+    settings = settings.for_access(access)
     from common.agent_providers import AgentTurnRequest, create_provider
 
     provider = create_provider(settings, client=client)
@@ -310,4 +349,5 @@ def test_provider_connection(settings, client=None):
             result = completed.value
             if not result.answer.strip():
                 raise AgentError('服务已响应，但没有返回可显示的文本。')
+            settings.check_current(access)
             return {'model': result.model, 'message': '连接成功，服务已返回测试回答。'}

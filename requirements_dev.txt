@@ -1,0 +1,8 @@
+-c requirements_win.lock
+-r requirements_win.txt
+pip==25.2
+pytest==9.1.1
+ruff==0.14.1
+pip-tools==7.5.3
+pip-audit==2.10.1
+playwright==1.56.0

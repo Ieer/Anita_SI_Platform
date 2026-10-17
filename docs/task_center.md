@@ -27,7 +27,7 @@ APScheduler 的持久 Job Store 和 Windows Task Scheduler 各自是任务定义
 
 Web 和 APScheduler 应作为独立进程运行。不要在 Dash 导入、开发热重载或多个 Web worker 中创建 scheduler；APScheduler 3.x 不支持多个实例共享同一个持久 Job Store。
 
-首次初始化前，请复制 [INI 模板](../src/config/anita_go.ini.example) 为 `src/config/anita_go.ini`，填写独立随机的加密密钥、Cookie 密钥和 JWT 密钥。旧 `dashgo.ini` 会在新文件不存在时兼容读取。初始化数据库会创建默认账号 `admin`，初始密码 `admin123`；首次登录后立即修改。该默认密码和旧 SHA-256 密码存储不适用于公网生产环境。
+首次初始化前，请复制 [INI 模板](../src/config/anita_go.ini.example) 为 `src/config/anita_go.ini`，填写独立随机的加密密钥、Cookie 密钥和 JWT 密钥。旧 `dashgo.ini` 会在新文件不存在时兼容读取。新库初始化会隐藏输入并确认唯一的 `admin` 密码（16 到 1024 个字符）；无人值守模式须通过部署密钥系统注入 `SMART_AGENT_INITIAL_ADMIN_PASSWORD`，初始化后清除，不存在默认口令。重复初始化不会重置已有账号。新密码采用随机盐 scrypt，旧摘要在成功密码验证时自动升级；历史默认口令仍须主动更改，远程部署必须使用 HTTPS。见[密码迁移说明](security_audit.md#密码存储与迁移)。
 
 `scripts/start_ap.py` 显式控制调度启动策略：
 
@@ -88,6 +88,8 @@ Agent 执行已有任务默认关闭。显式配置 `SMART_AGENT_RUN_ALLOWLIST` 
 
 ## 隔离演示与浏览器验收
 
+“Agent 接入”在演示账号下展示 OpenAI 兼容接口、企业内部 Agent 接口和企业模型。企业模型仅在演示进程中绑定 `demo_admin`，使用临时假登录文件和保留测试域名，不读取正式登录文件。配置页“测试连接”保留配置、权限及有效期校验，但只返回明确标记的离线演示结果，不访问上游服务；保存配置后的聊天仍使用固定演示剧本，不代表真实模型或协议联调通过。
+
 从项目根目录启动：
 
 ```powershell
@@ -120,7 +122,7 @@ Remove-Item Env:\PLATFORM_TASK_DEMO_URL
 - 默认使用仓库内置的 `page-agent 1.12.4` 文件，由 Dash 静态资源服务提供，断网内网环境不访问 CDN；
 - `SMART_AGENT_PAGE_AGENT_URL` 仅用于覆盖为企业审核后的固定 HTTPS 地址，不接受查询参数、内嵌凭证或明文 HTTP。
 - page-agent 以 `autoInit=false` 加载，不调用官方公网测试模型；浏览器只访问 SI-Platform 同源模型代理，API Key 不下发到浏览器；
-- 同源代理复用平台默认的 `openai_compatible` Provider。内网模型地址可使用 HTTPS，或按现有模型配置规则使用本机回环 HTTP；Columbus 等非 OpenAI 兼容 Provider 不用于页面助手。
+- 同源代理复用平台默认的 `openai_compatible` Provider。内网模型地址可使用 HTTPS，或按现有模型配置规则使用本机回环 HTTP；Internal Agent API 等非 OpenAI 兼容 Provider 不用于页面助手。
 
 完整黑客松链路为“告警分析 → 页面辅助 → 脱敏日志 → 任务提议 → 用户审批 → 运行回执”。页面助手加载失败时，Anita 的服务端 Agent 和现有任务中心仍可独立使用。
 

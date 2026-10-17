@@ -123,6 +123,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -167,6 +169,8 @@ app.db
 apscheduler.db
 
 # Local runtime state and credentials
+token.dat
+token.dat.*
 app.db*
 apscheduler.db*
 *.sqlite

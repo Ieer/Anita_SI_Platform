@@ -77,6 +77,14 @@ class AgentProviderState(Model):
         indexes = ((('conversation', 'provider_id'), True),)
 
 
+class AgentCredentialRejection(Model):
+    version = CharField(primary_key=True, max_length=64)
+
+    class Meta:
+        database = db()
+        table_name = 'sys_agent_credential_rejection'
+
+
 class AgentMessage(Model):
     conversation = ForeignKeyField(AgentConversation, backref='messages', on_delete='CASCADE')
     role = CharField(max_length=16)

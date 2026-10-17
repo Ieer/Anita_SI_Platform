@@ -9,6 +9,55 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
+def test_demo_provider_catalog_and_offline_connection():
+    from playwright.sync_api import expect, sync_playwright
+
+    url = os.environ.get('PLATFORM_TASK_DEMO_URL', 'http://127.0.0.1:8097')
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={'width': 1440, 'height': 960})
+        errors = []
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(url + '/demo')
+        page.goto(url + '/setting_/agent_provider')
+        page.locator('#agent-provider-add').click()
+        page.locator('.ant-select:has(#agent-provider-kind) .ant-select-selector').click()
+        dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+        for label in ('OpenAI 兼容接口', '企业内部 Agent 接口', '企业模型'):
+            expect(dropdown.get_by_title(label, exact=True)).to_be_visible()
+        dropdown.get_by_title('企业模型', exact=True).click()
+        page.locator('#agent-provider-name').fill('展示企业模型')
+        page.locator('#agent-enterprise-check').click()
+        expect(page.locator('#agent-enterprise-login-status')).to_contain_text('登录文件可用')
+        page.locator('#agent-provider-test').click()
+        expect(page.locator('#agent-provider-status')).to_contain_text('离线演示检查通过', timeout=15000)
+        expect(page.locator('#agent-provider-status')).to_contain_text('未请求外部服务')
+        assert 'demo-only-enterprise-access' not in page.content()
+        report = ROOT / 'cache' / 'report' / 'ui'
+        report.mkdir(parents=True, exist_ok=True)
+        for width in (1440, 390):
+            page.set_viewport_size({'width': width, 'height': 960 if width > 700 else 844})
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1')
+            page.screenshot(path=str(report / f'demo-provider-catalog-{width}.png'))
+        page.set_viewport_size({'width': 1440, 'height': 960})
+        page.locator('#agent-provider-save').click()
+        expect(page.locator('#agent-provider-status')).to_contain_text('配置已保存', timeout=15000)
+        page.locator('#agent-launcher').click()
+        page.locator('#agent-new-conversation').click()
+        for prompt, answer in (('分析当前告警', '93%'), ('运行任务票据归档', '只提供只读分析')):
+            expect(page.locator('#agent-send')).to_be_enabled(timeout=15000)
+            page.locator('#agent-prompt').fill(prompt)
+            page.locator('#agent-send').click()
+            expect(page.locator('.agent-message-assistant').last).to_contain_text(answer, timeout=15000)
+        page.locator('#agent-close').click()
+        page.locator('#agent-provider-delete').click()
+        page.get_by_role('button', name='确认删除', exact=True).click()
+        expect(page.locator('#agent-provider-name')).to_have_value('', timeout=15000)
+        assert not errors, errors
+        browser.close()
+
+
+@pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
 def test_hackathon_demo_story_and_synthetic_monitor():
     from playwright.sync_api import expect, sync_playwright
 
@@ -38,7 +87,7 @@ def test_hackathon_demo_story_and_synthetic_monitor():
         page.locator('#agent-prompt').fill('分析当前告警')
         expect(page.locator('#agent-prompt')).to_have_value('分析当前告警')
         page.locator('#agent-send').click()
-        expect(page.locator('.agent-message-user .agent-message-avatar-user .ant-avatar-string')).to_have_text('演')
+        expect(page.locator('.agent-message-user .agent-message-avatar-user .ant-avatar-string')).to_have_text('演', timeout=15000)
         expect(page.locator('.agent-message-assistant').last).to_contain_text('93%', timeout=15000)
 
         page.locator('#agent-prompt').fill('查看票据归档的最近运行日志')
@@ -81,12 +130,13 @@ def test_page_agent_uses_local_bundle_and_same_origin_model_proxy():
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(url + '/demo')
         page.locator('#agent-launcher').click()
+        page.locator('.page-agent-details > summary').click()
         page.locator('#page-agent-launcher').click()
         page.wait_for_function(
             "window.pageAgent?.config?.baseURL === window.location.origin + '/page_agent_llm/v1'",
             timeout=30000,
         )
-        expect(page.locator('#page-agent-status')).to_contain_text('已连接平台内网模型')
+        expect(page.locator('#page-agent-status')).to_have_text('工具已就绪，模型连接将在使用时建立。')
         config = page.evaluate("""() => ({
             model: window.pageAgent.config.model,
             baseURL: window.pageAgent.config.baseURL,
@@ -239,7 +289,13 @@ def test_task_center_showcase():
                 page.goto(url + '/task_/' + route)
                 page.locator(selector).wait_for(timeout=20000)
                 table = page.locator(selector + ' .ant-table-tbody tr').first
-                if route != 'overview':
+                if route == 'overview':
+                    page.wait_for_function("""() => {
+                        const plot = document.querySelector('#tc-overview-chart .js-plotly-plot');
+                        return plot?.data?.length > 0 && plot._fullLayout
+                            && plot.querySelectorAll('.scatterlayer .points .point').length > 0;
+                    }""")
+                else:
                     table.wait_for(timeout=20000)
                     page.wait_for_function("document.querySelector('.tc-page .ant-table-tbody')?.innerText.includes('订单') || document.querySelector('.tc-page .ant-table-tbody')?.innerText.includes('Demo')")
                 page.screenshot(path=str(output / f'task-center-{route}-{width}.png'))
@@ -316,6 +372,7 @@ def test_scheduler_policy_panel_layout():
         page.goto(url + '/demo')
         page.locator('.tc-overview-page').wait_for(timeout=30000)
         page.locator('.tc-scheduler-status-inner').wait_for(timeout=10000)
+        page.locator('.tc-overview-settings > summary').click()
         page.locator('#tc-scheduler-policy-mode').wait_for()
         page.get_by_text('保存下次启动策略', exact=True).wait_for()
         page.get_by_text('确认启用任务调度', exact=True).wait_for(state='attached')

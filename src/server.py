@@ -22,7 +22,7 @@ app = CustomDash(
     compress=True,
     update_title=None, # type: ignore
     serve_locally=CommonConf.DASH_SERVE_LOCALLY,
-    assets_path_ignore=[r'monaco-editor', r'three'],
+    assets_path_ignore=[r'monaco-editor', r'three', r'page-agent'],
     extra_hot_reload_paths=[],
     hooks={
         'request_pre': """
@@ -186,17 +186,19 @@ def agent_stream():
             profile_id = agent_provider_repository.get_conversation_profile(
                 access.user_name, conversation_id)
         agent_provider_repository.set_conversation_profile(
-            access.user_name, conversation_id, profile_id)
-        settings = (agent_provider_repository.resolve_profile_settings(profile_id)
+            access.user_name, conversation_id, profile_id, access=access)
+        settings = (agent_provider_repository.resolve_profile_settings(profile_id, access=access)
                     if profile_id and profile_id != 'environment'
-                    else ModelSettings.from_environment())
+                    else ModelSettings.from_environment().for_access(access))
         remote_id = agent_repository.get_remote_session(
             access.user_name, conversation_id, settings.remote_session_key)
         turn_id, history = agent_repository.begin_turn(
             access.user_name, conversation_id, payload['prompt'])
     except AgentError as error:
         _agent_stream_slots.release()
-        return jsonify({'error': str(error)}), 400
+        from common.enterprise_models_credentials import EnterpriseAccessError
+
+        return jsonify({'error': str(error)}), 403 if isinstance(error, EnterpriseAccessError) else 400
     except Exception:
         _agent_stream_slots.release()
         logger.exception('Could not initialize Agent stream.')
@@ -210,8 +212,8 @@ def agent_stream():
         completed = False
         try:
             yield encode_event('status', {'state': 'started'})
-            provider_state = agent_repository.get_provider_state(
-                access.user_name, conversation_id, settings.remote_session_key)
+            provider_state = agent_repository.prepare_provider_state(
+                access.user_name, conversation_id, turn_id, settings)
             events = run_turn_events(
                 payload['prompt'], access, history,
                 allow_log_export=payload['allow_log_export'],
@@ -220,6 +222,7 @@ def agent_stream():
                 streaming=True,
                 profile_id=profile_id,
                 provider_state=provider_state,
+                resolved_settings=settings,
             )
             while True:
                 try:
@@ -230,9 +233,11 @@ def agent_stream():
                     if (current_access.user_name != access.user_name
                             or not current_access.has_access('工作台-页面')):
                         raise AgentError('访问权限已变更，请重新登录。')
-                    agent_repository.set_remote_session(
-                        access.user_name, conversation_id, settings.remote_session_key,
-                        turn_result['remote_conversation_id'])
+                    settings.check_current(current_access)
+                    if settings.provider != 'enterprise_models':
+                        agent_repository.set_remote_session(
+                            access.user_name, conversation_id, settings.remote_session_key,
+                            turn_result['remote_conversation_id'])
                     agent_repository.finish_turn(
                         access.user_name, conversation_id, turn_id, turn_result['answer'],
                         turn_result['trace'], turn_result['model'], proposals=turn_result['proposals'],
@@ -331,9 +336,9 @@ def page_agent_chat_completions():
         return jsonify({'error': {'message': '页面助手模型服务繁忙，请稍后重试。'}}), 429
     try:
         profile_id = agent_provider_repository.default_profile_id()
-        settings = (agent_provider_repository.resolve_profile_settings(profile_id)
+        settings = (agent_provider_repository.resolve_profile_settings(profile_id, access=access)
                     if profile_id and profile_id != 'environment'
-                    else ModelSettings.from_environment())
+                else ModelSettings.from_environment().for_access(access))
         if settings.provider != 'openai_compatible':
             raise AgentError('页面助手需要 OpenAI 兼容 Provider。')
         upstream_payload = dict(payload)

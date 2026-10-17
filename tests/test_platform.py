@@ -18,6 +18,30 @@ CHECK_SPEC.loader.exec_module(check_pages)
 
 
 class ThemeTests(unittest.TestCase):
+    def test_neutral_dark_layers_preserve_login_and_other_modes(self):
+        from common.utilities.util_theme import PALETTES, theme_spec
+
+        for palette in PALETTES:
+            for mode, contrast, expected in (
+                ('dark', 'normal', '#151819'), ('dark', 'high', '#000000'),
+                ('light', 'normal', '#f2f4f5'), ('light', 'high', '#ffffff'),
+            ):
+                with self.subTest(mode=mode, contrast=contrast, palette=palette):
+                    spec = theme_spec({'mode': mode, 'palette': palette, 'contrast': contrast})
+                    self.assertEqual(spec['colors']['canvas'], expected)
+                    self.assertEqual(spec['token']['colorBgLayout'], expected)
+        self.assertEqual(theme_spec(system_dark=True)['colors']['canvas'], '#151819')
+        dark = theme_spec({'mode': 'dark'})
+        for role, expected in (('surface', '#1d2224'), ('raised', '#272d30'),
+                               ('divider', '#394346'), ('border', '#7f9098')):
+            self.assertEqual(dark['colors'][role], expected)
+        self.assertEqual(dark['token']['colorBgElevated'], '#272d30')
+        self.assertEqual(dark['token']['colorBorderSecondary'], '#394346')
+        login = theme_spec(login=True)
+        for role, expected in (('canvas', '#11191a'), ('surface', '#1b2024'),
+                               ('raised', '#272e34')):
+            self.assertEqual(login['colors'][role], expected)
+
     def test_theme_callbacks_do_not_sample_or_query_tasks(self):
         import dash
         from dash_callback.application.dashboard_ import monitor_c

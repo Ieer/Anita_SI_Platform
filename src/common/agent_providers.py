@@ -202,9 +202,11 @@ _PROVIDER_FACTORIES = {OpenAICompatibleProvider.provider_id: OpenAICompatiblePro
 
 
 def registered_provider_ids():
-    from common.columbus_provider import ColumbusProvider
+    from common.internal_agent_provider import InternalAgentProvider
+    from common.enterprise_models_provider import EnterpriseModelsProvider
 
-    _PROVIDER_FACTORIES.setdefault(ColumbusProvider.provider_id, ColumbusProvider)
+    _PROVIDER_FACTORIES.setdefault(InternalAgentProvider.provider_id, InternalAgentProvider)
+    _PROVIDER_FACTORIES.setdefault(EnterpriseModelsProvider.provider_id, EnterpriseModelsProvider)
     module_name = os.environ.get('SMART_AGENT_PROVIDER_MODULE', '').strip()
     if module_name:
         try:

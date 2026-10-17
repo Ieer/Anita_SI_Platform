@@ -132,10 +132,42 @@ def get_provider_state(owner, conversation_id, provider_id):
         return json.loads(_decrypt(state.encrypted_state)) if state else None
 
 
+def prepare_provider_state(owner, conversation_id, turn_id, settings):
+    if settings.provider != 'enterprise_models':
+        return get_provider_state(owner, conversation_id, settings.remote_session_key)
+    from .agent_provider_repository import _decrypt, _encrypt
+
+    version = settings.provider_options['_credential_version']
+    with _session() as database, database.atomic():
+        conversation = _owned(owner, conversation_id)
+        if conversation.pending_turn != turn_id:
+            raise AgentError('请求已失效，请刷新会话。')
+        row = AgentProviderState.get_or_none(
+            (AgentProviderState.conversation == conversation)
+            & (AgentProviderState.provider_id == settings.remote_session_key))
+        state = json.loads(_decrypt(row.encrypted_state)) if row else None
+        if state and state.get('credential_version') == version and state.get('interrupted'):
+            raise AgentError('Enterprise Models 上轮状态不确定，请新建会话后重试。')
+        marker = _encrypt(json.dumps({'credential_version': version, 'interrupted': True}))
+        if row:
+            AgentProviderState.update(encrypted_state=marker).where(AgentProviderState.id == row.id).execute()
+        else:
+            AgentProviderState.create(conversation=conversation, provider_id=settings.remote_session_key,
+                                      encrypted_state=marker)
+        return state
+
+
 def finish_turn(owner, conversation_id, turn_id, content, trace=(), model_name=None, failed=False, proposals=(),
                 provider_id=None, provider_state=None):
     with _session() as database, database.atomic():
         conversation = _owned(owner, conversation_id)
+        if not failed and isinstance(provider_state, dict) and provider_state.get('provider') == 'enterprise_models':
+            from common.enterprise_models_credentials import read_credential
+            from .agent_provider_repository import credential_rejected
+
+            version = provider_state.get('credential_version')
+            if read_credential().version != version or credential_rejected(version):
+                raise AgentError('Enterprise Models 登录凭证已变更，请新建会话后重试。')
         updated = (AgentConversation.update(pending_turn=None, updated_at=datetime.now(), model_name=model_name)
                    .where((AgentConversation.conversation_id == conversation_id)
                           & (AgentConversation.owner == owner) & (AgentConversation.pending_turn == turn_id))

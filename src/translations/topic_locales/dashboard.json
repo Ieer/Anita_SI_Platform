@@ -2,6 +2,23 @@
     "root_locale": "zh-cn",
     "topic": "dashboard",
     "contents": {
+        "Enterprise Models 仅限绑定的系统管理员使用。": {"en-us": "Enterprise Models is restricted to the bound system administrator."},
+        "Enterprise Models 登录文件不可用或已过期，请重新完成企业 AI 登录。": {"en-us": "The Enterprise Models sign-in file is unavailable or expired. Sign in again through Enterprise AI."},
+        "Enterprise Models 登录已失效，请重新完成企业 AI 登录。": {"en-us": "Enterprise Models sign-in is invalid. Sign in again through Enterprise AI."},
+        "Enterprise Models 登录凭证已变更，请新建会话后重试。": {"en-us": "Enterprise Models credentials changed. Start a new conversation."},
+        "Enterprise Models 上轮状态不确定，请新建会话后重试。": {"en-us": "The previous Enterprise Models turn has an uncertain state. Start a new conversation."},
+        "Enterprise Models 模型必须属于有效且不重复的候选列表。": {"en-us": "The Enterprise Models model must belong to a valid, unique candidate list."},
+        "Enterprise Models 服务地址必须与服务端配置一致。": {"en-us": "The Enterprise Models endpoint must match the server configuration."},
+        "Enterprise Models 服务地址未配置或无效。": {"en-us": "The Enterprise Models endpoint is missing or invalid."},
+        "Enterprise Models 对话状态无效。": {"en-us": "Invalid Enterprise Models conversation state."},
+        "Enterprise Models 上游拒绝授权，请检查账号权限。": {"en-us": "Enterprise Models denied authorization. Check account permissions."},
+        "Enterprise Models 服务请求失败，请稍后检查连接。": {"en-us": "Enterprise Models request failed. Check the connection later."},
+        "Enterprise Models 未返回有效事件流。": {"en-us": "Enterprise Models did not return a valid event stream."},
+        "Enterprise Models 响应过大。": {"en-us": "The Enterprise Models response is too large."},
+        "Enterprise Models 事件过大。": {"en-us": "The Enterprise Models event is too large."},
+        "Enterprise Models 回答过长。": {"en-us": "The Enterprise Models answer is too long."},
+        "Enterprise Models 响应无效或连接中断，请检查企业 AI 登录。": {"en-us": "Enterprise Models returned an invalid response or disconnected. Check Enterprise AI sign-in."},
+        "Enterprise Models 响应不完整，请新建会话后重试。": {"en-us": "Enterprise Models returned an incomplete response. Start a new conversation."},
         "域名": {
             "en-us": "hostname"
         },
@@ -207,8 +224,8 @@
         "模型地址必须使用 HTTPS；仅本机服务允许 HTTP。": {
             "en-us": "The model URL must use HTTPS; HTTP is allowed only for local services."
         },
-        "Columbus APIM Subscription Key 格式无效。": {
-            "en-us": "The Columbus APIM subscription key is invalid."
+        "Internal Agent API APIM Subscription Key 格式无效。": {
+            "en-us": "The Internal Agent API APIM subscription key is invalid."
         },
         "没有工作台权限。": {"en-us": "You do not have access to the workbench."},
         "访问权限已变更，请重新登录。": {
@@ -281,65 +298,65 @@
         },
         "日志数据库不可用。": {"en-us": "The log database is unavailable."},
         "未找到已完成的运行日志。": {"en-us": "No completed run log was found."},
-        "Columbus 配置必须是对象。": {"en-us": "Columbus configuration must be an object."},
-        "Columbus 扩展配置过大。": {"en-us": "Columbus additional configuration is too large."},
-        "Columbus 请求受到限流，请稍后确认状态再重试。": {
-            "en-us": "Columbus rate-limited the request. Check its status before retrying."
+        "Internal Agent API 配置必须是对象。": {"en-us": "Internal Agent API configuration must be an object."},
+        "Internal Agent API 扩展配置过大。": {"en-us": "Internal Agent API additional configuration is too large."},
+        "Internal Agent API 请求受到限流，请稍后确认状态再重试。": {
+            "en-us": "Internal Agent API rate-limited the request. Check its status before retrying."
         },
-        "Columbus 响应过大，无法安全处理。": {
-            "en-us": "The Columbus response is too large to process safely."
+        "Internal Agent API 响应过大，无法安全处理。": {
+            "en-us": "The Internal Agent API response is too large to process safely."
         },
-        "Columbus 返回的不是有效 JSON；当前 Provider 尚不支持上游 SSE。": {
-            "en-us": "Columbus returned invalid JSON; this provider does not support upstream SSE."
+        "Internal Agent API 返回的不是有效 JSON；当前 Provider 尚不支持上游 SSE。": {
+            "en-us": "Internal Agent API returned invalid JSON; this provider does not support upstream SSE."
         },
-        "Columbus 响应格式无效。": {"en-us": "The Columbus response format is invalid."},
-        "Columbus Token 响应缺少有效凭证或有效期。": {
-            "en-us": "The Columbus token response is missing a valid credential or expiry."
+        "Internal Agent API 响应格式无效。": {"en-us": "The Internal Agent API response format is invalid."},
+        "Internal Agent API Token 响应缺少有效凭证或有效期。": {
+            "en-us": "The Internal Agent API token response is missing a valid credential or expiry."
         },
-        "Columbus 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。": {
-            "en-us": "The Columbus request timed out. The remote task may still be running; check its status before retrying and do not resubmit."
+        "Internal Agent API 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。": {
+            "en-us": "The Internal Agent API request timed out. The remote task may still be running; check its status before retrying and do not resubmit."
         },
-        "Columbus 连接中断；远端执行状态未知，请确认后再重试。": {
-            "en-us": "The Columbus connection was interrupted and remote status is unknown. Verify before retrying."
+        "Internal Agent API 连接中断；远端执行状态未知，请确认后再重试。": {
+            "en-us": "The Internal Agent API connection was interrupted and remote status is unknown. Verify before retrying."
         },
-        "Columbus 上轮未返回原生 messages，无法可靠续接。请新建对话，并向平台确认 history 协议。": {
-            "en-us": "The previous Columbus turn returned no native messages, so it cannot be resumed reliably. Start a new conversation and confirm the history protocol with the platform."
+        "Internal Agent API 上轮未返回原生 messages，无法可靠续接。请新建对话，并向平台确认 history 协议。": {
+            "en-us": "The previous Internal Agent API turn returned no native messages, so it cannot be resumed reliably. Start a new conversation and confirm the history protocol with the platform."
         },
-        "Columbus 已保存的原生历史无效，请新建对话。": {
-            "en-us": "The saved native Columbus history is invalid. Start a new conversation."
+        "Internal Agent API 已保存的原生历史无效，请新建对话。": {
+            "en-us": "The saved native Internal Agent API history is invalid. Start a new conversation."
         },
-        "Columbus 对话历史过大，请新建对话。": {
-            "en-us": "The Columbus conversation history is too large. Start a new conversation."
+        "Internal Agent API 对话历史过大，请新建对话。": {
+            "en-us": "The Internal Agent API conversation history is too large. Start a new conversation."
         },
-        "Columbus 返回的对话历史过大，请新建对话。": {
-            "en-us": "The conversation history returned by Columbus is too large. Start a new conversation."
+        "Internal Agent API 返回的对话历史过大，请新建对话。": {
+            "en-us": "The conversation history returned by Internal Agent API is too large. Start a new conversation."
         },
-        "当前 Columbus Provider 尚不支持上游 SSE；请确认完整结果模式，勿重复提交任务。": {
-            "en-us": "This Columbus provider does not support upstream SSE. Confirm complete-result mode and do not resubmit the task."
+        "当前 Internal Agent API Provider 尚不支持上游 SSE；请确认完整结果模式，勿重复提交任务。": {
+            "en-us": "This Internal Agent API provider does not support upstream SSE. Confirm complete-result mode and do not resubmit the task."
         },
-        "Columbus 响应缺少有效 data。": {"en-us": "The Columbus response is missing valid data."},
-        "Columbus 任务结果格式无效。": {"en-us": "The Columbus task result format is invalid."},
-        "Columbus 返回业务错误，请检查限流、上下文长度或 Agent 插件配置。": {
-            "en-us": "Columbus returned a business error. Check rate limits, context length, or Agent plugin configuration."
+        "Internal Agent API 响应缺少有效 data。": {"en-us": "The Internal Agent API response is missing valid data."},
+        "Internal Agent API 任务结果格式无效。": {"en-us": "The Internal Agent API task result format is invalid."},
+        "Internal Agent API 返回业务错误，请检查限流、上下文长度或 Agent 插件配置。": {
+            "en-us": "Internal Agent API returned a business error. Check rate limits, context length, or Agent plugin configuration."
         },
-        "Columbus 回答格式无效。": {"en-us": "The Columbus answer format is invalid."},
-        "Columbus 任务失败或已取消，请联系管理员确认远端状态。": {
-            "en-us": "The Columbus task failed or was cancelled. Contact an administrator to verify its remote status."
+        "Internal Agent API 回答格式无效。": {"en-us": "The Internal Agent API answer format is invalid."},
+        "Internal Agent API 任务失败或已取消，请联系管理员确认远端状态。": {
+            "en-us": "The Internal Agent API task failed or was cancelled. Contact an administrator to verify its remote status."
         },
-        "Columbus 仅返回异步任务，查询协议尚未提供；请在远端确认任务状态，勿重复提交。": {
-            "en-us": "Columbus returned only an asynchronous task, but no polling protocol is available. Verify its remote status and do not resubmit."
+        "Internal Agent API 仅返回异步任务，查询协议尚未提供；请在远端确认任务状态，勿重复提交。": {
+            "en-us": "Internal Agent API returned only an asynchronous task, but no polling protocol is available. Verify its remote status and do not resubmit."
         },
-        "Columbus 未返回明确的成功状态，无法确认回答。": {
-            "en-us": "Columbus did not return an explicit success status, so the answer cannot be confirmed."
+        "Internal Agent API 未返回明确的成功状态，无法确认回答。": {
+            "en-us": "Internal Agent API did not return an explicit success status, so the answer cannot be confirmed."
         },
-        "Columbus 任务与回答状态不一致，无法确认回答。": {
-            "en-us": "The Columbus task and answer statuses do not match, so the answer cannot be confirmed."
+        "Internal Agent API 任务与回答状态不一致，无法确认回答。": {
+            "en-us": "The Internal Agent API task and answer statuses do not match, so the answer cannot be confirmed."
         },
-        "Columbus 响应缺少 output。": {"en-us": "The Columbus response is missing output."},
-        "Columbus 消息内容格式无效。": {"en-us": "The Columbus message content format is invalid."},
-        "Columbus 没有返回可显示的回答。": {"en-us": "Columbus returned no displayable answer."},
-        "Columbus 返回的原生 messages 格式无效。": {
-            "en-us": "The native messages returned by Columbus have an invalid format."
+        "Internal Agent API 响应缺少 output。": {"en-us": "The Internal Agent API response is missing output."},
+        "Internal Agent API 消息内容格式无效。": {"en-us": "The Internal Agent API message content format is invalid."},
+        "Internal Agent API 没有返回可显示的回答。": {"en-us": "Internal Agent API returned no displayable answer."},
+        "Internal Agent API 返回的原生 messages 格式无效。": {
+            "en-us": "The native messages returned by Internal Agent API have an invalid format."
         },
         "模型请求失败或超时，请检查服务端模型配置后重试。": {
             "en-us": "The model request failed or timed out. Check the server-side model configuration and try again."
@@ -363,8 +380,8 @@
         },
         "正在处理授权工具请求…": {"en-us": "Processing an authorized tool request…"},
         "工具处理完成，正在整理答复…": {"en-us": "Tool processing is complete; preparing the response…"},
-        "正在连接 Columbus Agent；当前使用完整结果模式…": {
-            "en-us": "Connecting to Columbus Agent using complete-result mode…"
+        "正在连接 Internal Agent API；当前使用完整结果模式…": {
+            "en-us": "Connecting to Internal Agent API using complete-result mode…"
         },
         "上游未返回 messages；本次回答可显示，但下一轮无法可靠续接。": {
             "en-us": "The upstream returned no messages. This answer is displayable, but the next turn cannot be resumed reliably."
@@ -375,21 +392,42 @@
         "未注册的 Agent Provider：{provider}": {
             "en-us": "Unregistered Agent provider: {provider}"
         },
-        "Columbus {label} 必须是有效 UUID。": {
-            "en-us": "Columbus {label} must be a valid UUID."
+        "Internal Agent API {label} 必须是有效 UUID。": {
+            "en-us": "Internal Agent API {label} must be a valid UUID."
         },
-        "请填写有效的 Columbus {label}。": {
-            "en-us": "Enter a valid Columbus {label}."
+        "请填写有效的 Internal Agent API {label}。": {
+            "en-us": "Enter a valid Internal Agent API {label}."
         },
-        "Columbus {stage}认证或授权失败，请检查凭证、订阅和 Scope。": {
-            "en-us": "Columbus {stage} authentication or authorization failed. Check credentials, subscription, and Scope."
+        "Internal Agent API {stage}认证或授权失败，请检查凭证、订阅和 Scope。": {
+            "en-us": "Internal Agent API {stage} authentication or authorization failed. Check credentials, subscription, and Scope."
         },
-        "Columbus {stage}失败（HTTP {status}），请联系管理员。": {
-            "en-us": "Columbus {stage} failed (HTTP {status}). Contact an administrator."
+        "Internal Agent API {stage}失败（HTTP {status}），请联系管理员。": {
+            "en-us": "Internal Agent API {stage} failed (HTTP {status}). Contact an administrator."
         },
         "Token 获取": {"en-us": "token acquisition"},
         "Agent 请求": {"en-us": "Agent request"},
         "页面助手": {"en-us": "Page assistant"},
+        "页面辅助": {"en-us": "Page tools"},
+        "页面辅助详情": {"en-us": "Page tool details"},
+        "独立工具": {"en-us": "Separate tool"},
+        "Agent 服务": {"en-us": "Agent service"},
+        "启用": {"en-us": "Enable"},
+        "加载中…": {"en-us": "Loading..."},
+        "已启用": {"en-us": "Enabled"},
+        "重试": {"en-us": "Retry"},
+        "未启用": {"en-us": "Not enabled"},
+        "等待页面上下文": {"en-us": "Waiting for page context"},
+        "当前页面": {"en-us": "Current page"},
+        "当前页面暂无辅助能力": {"en-us": "No page tools available here"},
+        "工具已就绪，模型连接将在使用时建立。": {"en-us": "Tool ready. The model is contacted when used."},
+        "加载失败或超时，请重试。": {"en-us": "Loading failed or timed out. Please retry."},
+        "正在加载页面辅助…": {"en-us": "Loading page tools..."},
+        "读取指标": {"en-us": "Read metrics"},
+        "打开任务中心": {"en-us": "Open task center"},
+        "打开任务日志": {"en-us": "Open task logs"},
+        "筛选任务": {"en-us": "Filter tasks"},
+        "读取脱敏日志": {"en-us": "Read sanitized logs"},
+        "打开任务概览": {"en-us": "Open task overview"},
         "仅辅助定位、填写和筛选，不执行任务": {
             "en-us": "Assistance only for locating, filling, and filtering; task execution is not allowed"
         },

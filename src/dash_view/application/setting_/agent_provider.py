@@ -29,7 +29,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
         provider_error = t__setting('外部 Provider 加载失败，请检查服务端模块配置。')
 
     try:
-        profiles = agent_provider_repository.list_profiles()
+        profiles = agent_provider_repository.list_profiles(menu_access)
         active_profile_id = agent_provider_repository.default_profile_id()
         profile_error = ''
     except Exception:
@@ -39,19 +39,20 @@ def render_content(menu_access: MenuAccess, **kwargs):
         profile_error = t__setting('配置数据库不可用，当前无法读取或保存 Agent 配置。')
     provider_options = [
         {'label': {'openai_compatible': t__setting('OpenAI 兼容接口'),
-                   'columbus_agent': 'Columbus Agent'}.get(provider, provider),
+                   'internal_agent': t__setting('企业内部 Agent 接口'),
+                   'enterprise_models': t__setting('企业模型')}.get(provider, provider),
          'value': provider}
-        for provider in providers
+        for provider in providers if agent_provider_repository.provider_allowed(provider, menu_access)
     ]
-    active_status = model_status(active_profile_id) if active_profile_id else model_status()
-    environment_status = model_status()
+    active_status = model_status(active_profile_id, access=menu_access)
+    environment_status = model_status(access=menu_access)
     return html.Main([
         dcc.Interval(id='agent-provider-init', interval=50, max_intervals=1),
         dcc.Store(id='agent-provider-refresh', data=0),
         dcc.Store(id='agent-provider-edit-id'),
         fac.AntdAlert(
-            message=t__setting('凭证只在服务端加密保存，不会回传到浏览器。更新已有凭证时填写新值；留空表示保留已保存的凭证。'),
-            description=t__setting('只有系统管理员可以维护服务配置；普通用户只能在对话中选择已保存的配置。连接测试为当前参数的一次验证，不保证服务始终可用。'),
+            message=t__setting('服务端凭证不回传浏览器；本机文件凭证不会复制入库。'),
+            description=t__setting('连接使用权限由服务端校验；企业模型仅限绑定管理员。连接测试会实际请求上游。'),
             type='info', showIcon=True, className='agent-config-notice',
         ),
         html.Div([
@@ -109,7 +110,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
                     fac.AntdSelect(id='agent-provider-kind', options=provider_options,
                                    value='openai_compatible' if 'openai_compatible' in providers else None,
                                    placeholder=t__setting('选择服务协议'), style={'width': '100%'}),
-                    html.Small(t__setting('Columbus 使用专用协议；其他非兼容平台需注册独立 Provider。')),
+                    html.Small(t__setting('Internal Agent API 使用专用协议；其他非兼容平台需注册独立 Provider。')),
                 ], className='agent-config-field'),
                 html.Div([
                     html.Label([t__setting('服务地址'), html.Span(t__setting('必填'))], htmlFor='agent-provider-url'),
@@ -129,19 +130,35 @@ def render_content(menu_access: MenuAccess, **kwargs):
                                   placeholder=t__setting('新建配置请输入密钥；已有配置可留空保留'),
                                   autoComplete='new-password', maxLength=8192),
                     html.Small(t__setting('保存后不会再次显示凭证明文。请勿将密钥发送到聊天窗口。')),
-                ], className='agent-config-field'),
+                ], className='agent-config-field', id='agent-provider-key-field'),
+                html.Div([
+                    html.Label(t__setting('模型选择'), htmlFor='agent-enterprise-model'),
+                    fac.AntdSelect(id='agent-enterprise-model',
+                                   options=[{'label': model, 'value': model} for model in (
+                                       'gpt-5-mini', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview')],
+                                   value='gpt-5-mini', style={'width': '100%'}),
+                    html.Label(t__setting('候选模型（每行一个）'), htmlFor='agent-enterprise-models'),
+                    fac.AntdInput(id='agent-enterprise-models', mode='text-area',
+                                  value='gpt-5-mini\nclaude-sonnet-4-6\ngemini-3.1-pro-preview',
+                                  maxLength=10000, autoSize={'minRows': 3, 'maxRows': 6}),
+                    html.P(t__setting('候选模型尚未验证。请完成企业 AI 登录；平台只读本机文件，不使用 Refresh Token。')),
+                    fac.AntdButton(t__setting('检查企业 AI 登录'), id='agent-enterprise-check',
+                                   icon=fac.AntdIcon(icon='antd-reload'),
+                                   **{'aria-label': t__setting('检查企业 AI 登录')}),
+                    html.Div(id='agent-enterprise-login-status', role='status'),
+                ], id='agent-enterprise-fields', hidden=True, className='agent-config-field'),
                 html.Div([
                     html.Div([
-                        html.Span('COLUMBUS / OAUTH2', className='agent-config-eyebrow'),
+                        html.Span('INTERNAL AGENT API / OAUTH2', className='agent-config-eyebrow'),
                         html.P(t__setting('使用文本完整结果模式，不支持上游 SSE、异步任务查询及图片上传。'
                                '多轮问答要求上游返回原生 messages；连接测试会真实调用 Agent，可能产生用量或远端动作。'
-                               'Columbus 远端插件不受本地任务审批控制，请优先使用只读 Agent。')),
+                               'Internal Agent API 远端插件不受本地任务审批控制，请优先使用只读 Agent。')),
                     ], className='agent-config-editor-hint'),
                     *[
                         html.Div([
-                            html.Label(t__setting(label), htmlFor='agent-columbus-' + key),
+                            html.Label(t__setting(label), htmlFor='agent-internal-agent-' + key),
                             fac.AntdInput(
-                                id='agent-columbus-' + key,
+                                id='agent-internal-agent-' + key,
                                 mode='password' if key == 'client_secret' else 'default',
                                 placeholder=t__setting(placeholder), maxLength=8192 if key == 'client_secret' else 512,
                                 **({'autoComplete': 'new-password'} if key == 'client_secret' else {}),
@@ -155,7 +172,7 @@ def render_content(menu_access: MenuAccess, **kwargs):
                             ('client_secret', 'Client Secret', '新建请输入；编辑留空保留，不会回显'),
                         ]
                     ],
-                ], id='agent-columbus-fields', hidden=True),
+                ], id='agent-internal-agent-fields', hidden=True),
                 fac.AntdCheckbox(id='agent-provider-default', checked=False,
                                  label=t__setting('设为默认；不勾选时保留当前默认项')),
                 html.Div([

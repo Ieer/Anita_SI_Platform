@@ -27,7 +27,8 @@
         const resolved = login ? 'dark' : preference.mode === 'system'
             ? media && media.matches ? 'dark' : 'light' : preference.mode;
         const palette = login ? 'teal' : preference.palette;
-        const spec = config.themes[`${resolved}:${palette}:${preference.contrast}`];
+        const spec = login ? config.loginThemes[preference.contrast]
+            : config.themes[`${resolved}:${palette}:${preference.contrast}`];
         const root = document.documentElement;
         root.dataset.theme = resolved;
         root.dataset.palette = palette;
@@ -84,6 +85,7 @@
         state: function () { return state; },
         provider: function (value) {
             value = value || state;
+            if (value.login) return config.loginThemes[normalize(value).contrast];
             const palette = value.login ? 'teal' : normalize(value).palette;
             return config.themes[`${value.resolvedMode === 'dark' ? 'dark' : 'light'}:${palette}:${normalize(value).contrast}`];
         }

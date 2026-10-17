@@ -54,6 +54,60 @@ class StartupConfigTests(unittest.TestCase):
         })
         self.assertFalse(self.path.exists())
 
+    def test_config_override_is_explicit_and_resolves_outside_repository(self):
+        external = Path(self.folder.name) / 'isolated.ini'
+        self.assertEqual(anita_go_config.resolve_config_file_path(ROOT / 'src' / 'config', external),
+                         external.resolve())
+
+    def test_imported_main_uses_current_initialization_entry(self):
+        with patch.object(start_ap, 'init_db') as initialize, \
+                patch.object(start_ap.os, 'chdir'), patch.object(start_ap, 'run_services') as services:
+            start_ap.main(['--only-init'])
+        initialize.assert_called_once_with()
+        services.assert_not_called()
+
+    def test_ci_environment_never_inherits_real_services_or_probe_flags(self):
+        checker = importlib.import_module('check_ci')
+        configparser = importlib.import_module('configparser')
+        with patch.dict('os.environ', {
+            'SMART_AGENT_API_KEY': 'do-not-export', 'SMART_AGENT_RUN_ALLOWLIST': '["real-job"]',
+            'PLATFORM_WINDOWS_PROBE': '1', 'PLATFORM_LOCAL_SCHEDULER_PROBE': '1',
+            'PLATFORM_TASK_UI_PROBE': '1', 'USERNAME': 'ci-user',
+        }):
+            environment = checker.isolated_environment(self.folder.name)
+        self.assertNotIn('SMART_AGENT_API_KEY', environment)
+        self.assertFalse(any(key.startswith('PLATFORM_') for key in environment))
+        self.assertEqual(environment['SMART_AGENT_RUN_ALLOWLIST'], '[]')
+        self.assertEqual(environment['USERNAME'], 'ci-user')
+        config = configparser.ConfigParser()
+        config.read(environment['SMART_AGENT_CONFIG_FILE'], encoding='utf-8')
+        self.assertEqual(Path(config['SqlDbConf']['SQLITE_DB_PATH']).parent, Path(self.folder.name))
+        self.assertEqual(len(config['CommonConf']['ENCRYPT_KEY']), 64)
+        self.assertFalse(config.getboolean('LogConf', 'HANDLER_LOG_FILE'))
+
+    def test_ci_checks_stop_on_failure_and_remove_temporary_configuration(self):
+        checker = importlib.import_module('check_ci')
+        with patch.object(checker.subprocess, 'run', return_value=Mock(returncode=17)) as run:
+            self.assertEqual(checker.main([]), 17)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][1:], ['-m', 'pip', 'check'])
+        self.assertFalse(Path(run.call_args.kwargs['env']['SMART_AGENT_CONFIG_FILE']).exists())
+
+    def test_ci_browser_smoke_enables_only_isolated_probe_and_cleans_up(self):
+        checker = importlib.import_module('check_ci')
+        with patch.object(checker.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            self.assertEqual(checker.main(['--browser-smoke']), 0)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].args[0][1:], [str(ROOT / 'scripts' / 'start_ap.py'), '--only-init'])
+        command = run.call_args.args[0]
+        self.assertIn(str(ROOT / 'tests' / 'test_agent_ui.py'), command)
+        self.assertIn('--junitxml', command)
+        environment = run.call_args.kwargs['env']
+        self.assertEqual(environment['PLATFORM_AGENT_UI_PROBE'], '1')
+        self.assertEqual([key for key in environment if key.startswith('PLATFORM_')], ['PLATFORM_AGENT_UI_PROBE'])
+        self.assertEqual(environment['SMART_AGENT_RUN_ALLOWLIST'], '[]')
+        self.assertFalse(Path(environment['SMART_AGENT_CONFIG_FILE']).exists())
+
     def test_legacy_config_defaults_keep_awake_to_false(self):
         self.path.write_text(json.dumps({
             'schema': 1,
@@ -73,7 +127,7 @@ class StartupConfigTests(unittest.TestCase):
         database = peewee.SqliteDatabase(Path(self.folder.name) / 'init.db')
         with database.bind_ctx(models), patch.object(conn, 'db', return_value=database):
             database.create_tables(models)
-            conn.init_rds_data()
+            conn.init_rds_data(initial_admin_password='isolated-initial-password')
             user_models.SysUser.update(password_sha256='preserved-hash', user_status=False).where(
                 user_models.SysUser.user_name == 'admin').execute()
             user_models.SysRole.update(role_status=False).where(
@@ -86,6 +140,53 @@ class StartupConfigTests(unittest.TestCase):
             self.assertEqual(user_models.SysUser.select().count(), 1)
             self.assertEqual(user_models.SysRole.select().count(), 1)
             self.assertEqual(user_models.SysUserRole.select().count(), 1)
+        database.close()
+
+    def test_initial_admin_requires_unique_password_and_rolls_back_on_failure(self):
+        peewee = importlib.import_module('peewee')
+        conn = importlib.import_module('database.sql_db.conn')
+        user_models = importlib.import_module('database.sql_db.entity.table_user')
+        password_tools = importlib.import_module('common.utilities.util_password')
+        models = [user_models.SysUser, user_models.SysRole, user_models.SysUserRole]
+        database = peewee.SqliteDatabase(Path(self.folder.name) / 'unique-init.db')
+        with database.bind_ctx(models), patch.object(conn, 'db', return_value=database), \
+                patch.dict('os.environ', {'SMART_AGENT_INITIAL_ADMIN_PASSWORD': ''}), \
+                patch('sys.stdin.isatty', return_value=False):
+            database.create_tables(models)
+            for password in (None, '', 'admin123', ' ' * 16):
+                with self.subTest(password_length=len(password or '')):
+                    with self.assertRaises(ValueError):
+                        conn.init_rds_data(initial_admin_password=password)
+                    self.assertEqual(user_models.SysUser.select().count(), 0)
+                    self.assertEqual(user_models.SysRole.select().count(), 0)
+            with patch.dict('os.environ', {'SMART_AGENT_INITIAL_ADMIN_PASSWORD': 'isolated-environment-password'}):
+                conn.init_rds_data()
+            stored = user_models.SysUser.get_by_id('admin').password_sha256
+            self.assertTrue(stored.startswith('s1$'))
+            import hashlib
+            self.assertTrue(password_tools.verify_password_digest(
+                hashlib.sha256(b'isolated-environment-password').hexdigest(), stored))
+        database.close()
+
+    def test_initial_admin_hidden_prompt_requires_confirmation(self):
+        peewee = importlib.import_module('peewee')
+        conn = importlib.import_module('database.sql_db.conn')
+        user_models = importlib.import_module('database.sql_db.entity.table_user')
+        models = [user_models.SysUser, user_models.SysRole, user_models.SysUserRole]
+        database = peewee.SqliteDatabase(Path(self.folder.name) / 'prompt-init.db')
+        with database.bind_ctx(models), patch.object(conn, 'db', return_value=database), \
+                patch('os.environ.get', return_value=None), patch('sys.stdin.isatty', return_value=True):
+            database.create_tables(models)
+            with patch('getpass.getpass', side_effect=['isolated-prompt-password', 'mismatch']), \
+                    self.assertRaisesRegex(ValueError, 'do not match'):
+                conn.init_rds_data()
+            self.assertEqual(user_models.SysUser.select().count(), 0)
+            with patch('getpass.getpass', return_value='isolated-prompt-password') as prompt:
+                conn.init_rds_data()
+                self.assertEqual(prompt.call_count, 2)
+            with patch('getpass.getpass') as prompt:
+                conn.init_rds_data()
+                prompt.assert_not_called()
         database.close()
 
     def test_save_increments_revision_and_rejects_stale_writer(self):

@@ -56,7 +56,7 @@ class SysUser(BaseModel):
     user_name = CharField(primary_key=True, max_length=32, help_text='用户名')
     user_full_name = CharField(max_length=32, help_text='全名')
     user_status = BooleanField(help_text='用户状态（0：停用，1：启用）')
-    password_sha256 = CharField(max_length=64, help_text='密码SHA256值')
+    password_sha256 = CharField(max_length=64, help_text='版本化密码散列（兼容旧SHA256）')
     user_sex = CharField(max_length=64, help_text='性别')
     user_email = CharField(max_length=128, help_text='电子邮箱')
     phone_number = CharField(max_length=16, help_text='电话号码')

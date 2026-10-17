@@ -2,9 +2,12 @@ from configparser import ConfigParser
 from pathlib import Path
 from typing import List
 import platform
+import os
 
 
-def resolve_config_file_path(config_dir: Path) -> Path:
+def resolve_config_file_path(config_dir: Path, config_file=None) -> Path:
+    if config_file:
+        return Path(config_file).expanduser().resolve()
     config_dir = Path(config_dir)
     current_config = config_dir / 'anita_go.ini'
     legacy_config = config_dir / 'dashgo.ini'
@@ -15,7 +18,7 @@ def resolve_config_file_path(config_dir: Path) -> Path:
 
 class PathProj:
     ROOT_PATH = Path(__file__).parent.parent
-    CONF_FILE_PATH = resolve_config_file_path(ROOT_PATH / 'config')
+    CONF_FILE_PATH = resolve_config_file_path(ROOT_PATH / 'config', os.environ.get('SMART_AGENT_CONFIG_FILE'))
     AVATAR_DIR_PATH = (ROOT_PATH / '..' / 'user_data' / 'avatars').resolve()
     AVATAR_DIR_PATH.mkdir(parents=True, exist_ok=True)
 

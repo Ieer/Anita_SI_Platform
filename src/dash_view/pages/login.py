@@ -112,7 +112,11 @@ def render_content():
                 ),
                 html.Div(id='login-status', className='login-status', role='status',
                          **{'aria-live': 'polite', 'aria-atomic': 'true'}),
-                html.Div([fac.AntdIcon(icon='antd-lock'), html.Span('授权访问 / AUTHORIZED ACCESS')],
+                dcc.Store(id='login-progress-labels', data={
+                    'password': t__other('正在验证账号…'),
+                    'otp': t__other('正在验证动态码…'),
+                }),
+                html.Div([fac.AntdIcon(icon='antd-lock'), html.Span(t__other('授权访问'))],
                          className='login-access-note'),
                 fuc.FefferyLocation(id='login-url-location'),
             ], id='login-container', className='login-form-section', **{'aria-labelledby': 'login-title'}),

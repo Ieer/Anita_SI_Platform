@@ -17,11 +17,11 @@ def render_content(menu_access: MenuAccess, **kwargs):
         startup_config = load_startup_config()
         policy_error = None
     except StartupConfigError as error:
-        startup_config = {'revision': None, 'scheduler_mode': None}
+        startup_config = {'revision': None, 'scheduler_mode': None, 'keep_awake': False}
         policy_error = str(error)
     children = [
         html.Div([html.Div([html.Span('TASK CENTER', className='tc-eyebrow'),
-                   html.H2('任务概览')]),
+                   html.H2(t__task('任务概览'))]),
               html.Div([html.Div(id='tc-scheduler-status', className='tc-scheduler-status')],
                        className='tc-overview-heading-controls')], className='tc-page-heading'),
         dcc.Store(id='tc-overview-data'),
@@ -46,6 +46,17 @@ def render_content(menu_access: MenuAccess, **kwargs):
                 fac.AntdButton(t__task('保存下次启动策略'), id='tc-scheduler-policy-save',
                                type='primary', disabled=bool(policy_error)),
             ], className='tc-scheduler-policy-row'),
+            html.Div([
+                html.Strong(t__task('保持设备唤醒')),
+                fac.AntdSwitch(
+                    id='tc-scheduler-keep-awake',
+                    checked=startup_config['keep_awake'],
+                    disabled=bool(policy_error),
+                    checkedChildren=t__task('开启'),
+                    unCheckedChildren=t__task('关闭'),
+                ),
+                html.Span(id='tc-scheduler-keep-awake-state', role='status'),
+            ], className='tc-scheduler-policy-row'),
             html.Div(policy_error, id='tc-scheduler-policy-notice', className='tc-scheduler-policy-notice',
                      role='status'),
             ], className='tc-overview-settings-panel'),
@@ -55,20 +66,29 @@ def render_content(menu_access: MenuAccess, **kwargs):
                 forceRender=True, okClickClose=False, okText=t__task('确认启用'), cancelText=t__task('取消'),
             ),
         ], className='tc-scheduler-policy tc-overview-settings'))
+    children.insert(0, html.Div(
+        className='page-agent-context',
+        hidden=True,
+        **{
+            'data-page': 'task-overview',
+            'data-capabilities': 'list_tasks,open_task_log,filter_task',
+            'data-agent-policy': 'no_execute',
+        },
+    ))
     children.extend([
         html.Div([
             fac.AntdSegmented(id='tc-overview-mode', value='schedule', block=False, options=[
-                {'label': '计划', 'value': 'schedule', 'icon': 'antd-calendar'},
-                {'label': '实际运行', 'value': 'actual', 'icon': 'antd-line-chart'},
-                {'label': '任务列表', 'value': 'list', 'icon': 'antd-unordered-list'},
+                {'label': t__task('计划'), 'value': 'schedule', 'icon': 'antd-calendar'},
+                {'label': t__task('实际运行'), 'value': 'actual', 'icon': 'antd-line-chart'},
+                {'label': t__task('任务列表'), 'value': 'list', 'icon': 'antd-unordered-list'},
             ]),
             html.Div([fac.AntdSelect(id='tc-overview-window', value='1d', style={'width': 150}, options=[
-                {'label': '未来 24 小时', 'value': '1d'},
-                {'label': '未来 7 天', 'value': '7d'}, {'label': '未来 30 天', 'value': '30d'},
+                {'label': t__task('未来 24 小时'), 'value': '1d'},
+                {'label': t__task('未来 7 天'), 'value': '7d'}, {'label': t__task('未来 30 天'), 'value': '30d'},
             ]),
-            fac.AntdButton(id='tc-overview-reset', title='还原当前时间范围',
+            fac.AntdButton(id='tc-overview-reset', title=t__task('还原当前时间范围'),
                            icon=fac.AntdIcon(icon='antd-home')),
-            fac.AntdButton(id='tc-overview-refresh', title='刷新概览',
+            fac.AntdButton(id='tc-overview-refresh', title=t__task('刷新概览'),
                            icon=fac.AntdIcon(icon='antd-reload')),
             ], className='tc-overview-tools'),
         ], className='tc-toolbar'),

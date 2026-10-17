@@ -2,6 +2,25 @@
     "root_locale": "zh-cn",
     "topic": "access",
     "contents": {
+        "项目管理": {"en-us": "Projects"},
+        "个人信息-页面": {"en-us": "Profile Access"},
+        "团队授权-页面": {"en-us": "Team Authorization"},
+        "团队管理-页面": {"en-us": "Team Management"},
+        "工作台-页面": {"en-us": "Agent Workspace"},
+        "用户管理-页面": {"en-us": "User Management"},
+        "监控页-页面": {"en-us": "System Monitor Access"},
+        "角色管理-页面": {"en-us": "Role Management"},
+        "Windows任務管理-页面": {"en-us": "Windows Task Management"},
+        "调度启动配置": {"en-us": "Scheduler Startup Policy"},
+        "rpa_scheduler": {"en-us": "Task Overview Access"},
+        "系统监控": {"en-us": "System Monitor"},
+        "任务概览": {"en-us": "Task Overview"},
+        "平台任务": {"en-us": "Platform Tasks"},
+        "Windows 任务": {"en-us": "Windows Tasks"},
+        "运行日志": {"en-us": "Run Logs"},
+        "展示": {"en-us": "Preview"},
+        "Agent 接入": {"en-us": "Agent Connections"},
+        "Agent配置-页面": {"en-us": "Agent Profile Management"},
         "支付页-页面": {
             "en-us": "Pay Page Show"
         },
@@ -294,7 +313,7 @@
             "en-us": "System Setting"
         },
         "通知接口": {
-            "en-us": "Notify Api"
+            "en-us": "Notification Channels"
         },
         "通知接口-页面": {
             "en-us": "Notify Api Show"
@@ -306,7 +325,7 @@
             "en-us": "Task Log Show"
         },
         "监听接口": {
-            "en-us": "Listen Api"
+            "en-us": "Listening Channels"
         },
         "监听接口-页面": {
             "en-us": "Listen Api Show"

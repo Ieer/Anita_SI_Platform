@@ -4,6 +4,7 @@ import feffery_antd_components as fac
 from common.utilities.util_menu_access import MenuAccess
 from common.agent import model_status
 from common.agent_actions import can_propose
+from dash_view.framework.agent_widget_i18n import agent_widget_i18n_data, translate_agent_message
 from i18n import t__dashboard
 import dash_callback.application.dashboard_.workbench_c  # noqa
 
@@ -103,7 +104,8 @@ def render_actions(actions, can_approve):
                                 n_clicks=0, **{'aria-label': t__dashboard('拒绝')}),
                 ], className='agent-action-buttons'),
             ])] if action['status'] == 'pending' else []),
-            *([html.P(action['result'], role='status')] if action['result'] else []),
+            *([html.P(translate_agent_message(action['result']), role='status')]
+              if action['result'] else []),
         ], className='agent-action') for action in actions],
     ], open=any(action['status'] == 'pending' for action in actions))
 
@@ -167,4 +169,5 @@ def render_content(menu_access: MenuAccess, **kwargs):
             **{'aria-labelledby': 'agent-panel-title'}),
         dcc.Store(id='agent-active-conversation', storage_type='memory'),
         dcc.Interval(id='agent-init', interval=300, max_intervals=1, disabled=True),
-    ], id='agent-widget', className='agent-widget')
+    ], id='agent-widget', className='agent-widget',
+       **{'data-agent-i18n': agent_widget_i18n_data()})

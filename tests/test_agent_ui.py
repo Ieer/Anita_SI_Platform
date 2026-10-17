@@ -31,19 +31,51 @@ def serve_probe(port):
         conn.init_rds_data()
         from database.sql_db.entity.table_user import SysUser, SysUserRole
 
-        for owner in ['ui_alice', 'ui_bob', 'ui_theme']:
+        probe_users = ['ui_alice', 'ui_bob', 'ui_theme', 'ui_config', 'ui_member', 'ui_columbus', 'ui_locale', 'ui_i18n']
+        for owner in probe_users:
             values = dict(SysUser.get_by_id('admin').__data__)
             values.update(user_name=owner, user_full_name=owner)
             SysUser.create(**values)
-            SysUserRole.create(user_name=owner, role_name='admin')
+            if owner != 'ui_member':
+                SysUserRole.create(user_name=owner, role_name='admin')
+        from database.sql_db.entity.table_user import SysRole, SysRoleAccessMeta
+
+        role_values = dict(SysRole.get_by_id('admin').__data__)
+        role_values.update(role_name='ui_i18n_access', role_remark='Locale audit permissions')
+        SysRole.create(**role_values)
+        for permission in (
+            '团队授权-页面', '应用1-基础权限', '应用1-权限1', '应用1-权限2',
+            '应用2-基础权限', '应用2-权限1', '应用2-权限2',
+        ):
+            SysRoleAccessMeta.create(role_name='ui_i18n_access', access_meta=permission)
+        SysUserRole.create(user_name='ui_i18n', role_name='ui_i18n_access')
         gate = threading.Event()
         calls = []
         submissions = []
+        columbus_calls = []
+        channel_test_calls = []
+
+        def notification_test(**options):
+            channel_test_calls.append('notify')
+            return True, 'isolated test'
+
+        def mailbox_test(**options):
+            channel_test_calls.append('listen')
+            return []
+
+        for target in (
+            'common.notify.server_jiang.send_notify', 'common.notify.gewechat.send_notify',
+            'common.notify.enterprise_wechat.wechat_text', 'common.notify.email_smtp.send_mail',
+        ):
+            stack.enter_context(patch(target, side_effect=notification_test))
+        stack.enter_context(patch('common.listen.email_pop3.get_email_context_from_subject_during',
+                                  side_effect=mailbox_test))
 
         def transport(request):
             payload = json.loads(request.content)
-            calls.append(payload)
             prompt = next(message['content'] for message in reversed(payload['messages']) if message['role'] == 'user')
+            if prompt != '请只回复 OK。':
+                calls.append(payload)
             if 'wait' in prompt:
                 if not gate.wait(30):
                     raise httpx.ReadTimeout('test gate expired')
@@ -63,8 +95,24 @@ def serve_probe(port):
                 )}
             else:
                 message = {'role': 'assistant', 'content': 'UI TEST REPLY: ' + prompt + '\n' + 'Long response. ' * 40}
+            if payload.get('stream'):
+                delta = {'role': 'assistant', 'content': message.get('content')}
+                if message.get('tool_calls'):
+                    delta['tool_calls'] = [
+                        {'index': index, **call}
+                        for index, call in enumerate(message['tool_calls'])
+                    ]
+                chunk = {
+                    'id': 'ui_completion', 'object': 'chat.completion.chunk', 'created': 1,
+                    'model': payload['model'],
+                    'choices': [{'index': 0, 'delta': delta, 'finish_reason': 'stop'}],
+                }
+                return httpx.Response(
+                    200, content=f'data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n',
+                    headers={'Content-Type': 'text/event-stream'},
+                )
             return httpx.Response(200, json={
-                'id': 'ui_completion', 'object': 'chat.completion', 'created': 1, 'model': 'ui-test-model',
+                'id': 'ui_completion', 'object': 'chat.completion', 'created': 1, 'model': payload['model'],
                 'choices': [{'index': 0, 'message': message, 'finish_reason': 'stop'}],
             })
 
@@ -98,6 +146,30 @@ def serve_probe(port):
 
         stack.enter_context(patch('common.utilities.util_apscheduler._add_job', side_effect=submit))
         import app as platform_app
+        from common.columbus_provider import ColumbusProvider, _tokens
+        from common.agent_providers import _PROVIDER_FACTORIES
+
+        def columbus_transport(request):
+            if request.url.host == 'login.microsoftonline.com':
+                return httpx.Response(200, json={
+                    'access_token': 'browser-columbus-token', 'token_type': 'Bearer', 'expires_in': 3600,
+                })
+            payload = json.loads(request.content)
+            columbus_calls.append(payload)
+            text = payload['input'][0]['content'][0]['text']
+            return httpx.Response(200, json={
+                'response': {'status': 'SUCCESS', 'model': 'browser-columbus-agent', 'output': [{
+                    'role': 'assistant', 'type': 'message',
+                    'content': [{'type': 'output_text', 'text': 'COLUMBUS REPLY: ' + text}],
+                }]},
+                'messages': [*payload['history'], {'role': 'user', 'content': text}],
+            })
+
+        _tokens.clear()
+        columbus_client = stack.enter_context(httpx.Client(transport=httpx.MockTransport(columbus_transport)))
+        stack.enter_context(patch.dict(_PROVIDER_FACTORIES, {
+            'columbus_agent': lambda settings, client=None: ColumbusProvider(settings, columbus_client),
+        }))
         from flask import jsonify, redirect, make_response
         from common.utilities.util_jwt import jwt_encode
         from database.sql_db.repositories import agent_repository
@@ -106,7 +178,7 @@ def serve_probe(port):
 
         @server.get('/_ui/login/<owner>')
         def probe_login(owner):
-            if owner not in ['ui_alice', 'ui_bob', 'ui_theme']:
+            if owner not in probe_users:
                 return '', 404
             response = make_response(redirect('/dashboard_/monitor'))
             response.set_cookie('Authorization', 'Bearer ' + jwt_encode({'user_name': owner, 'token_use': 'session'}),
@@ -115,7 +187,10 @@ def serve_probe(port):
 
         @server.get('/_ui/stats')
         def probe_stats():
-            return jsonify(calls=len(calls), submissions=len(submissions),
+            return jsonify(calls=sum(call['model'] == 'ui-test-model' for call in calls),
+                           models=[call['model'] for call in calls], submissions=len(submissions),
+                           columbus_history_lengths=[len(call['history']) for call in columbus_calls],
+                           channel_test_calls=channel_test_calls,
                            conversations=len(agent_repository.list_conversations('ui_alice')))
 
         @server.post('/_ui/release')
@@ -210,6 +285,8 @@ class AgentBrowserTests(unittest.TestCase):
                                 state.contrast === expected.contrast && graph?.layout?.paper_bgcolor === spec.colors.surface &&
                                 graph.data[0].line.color === spec.colors.accent;
                         }''', arg={'mode': mode, 'palette': palette, 'contrast': contrast})
+                        expect(page.locator('.platform-brand-wordmark')).to_have_css(
+                            'filter', 'brightness(1.4)' if mode == 'dark' else 'brightness(0.5)')
                         self.assertEqual(baseline, page.evaluate(
                             "document.querySelector('#monitor-trend .js-plotly-plot').data.map(trace => trace.y)"))
                         expect(page.locator('#monitor-updated')).to_have_text(timestamp)
@@ -262,6 +339,7 @@ class AgentBrowserTests(unittest.TestCase):
             expect(page.locator('html')).to_have_attribute('data-theme', 'light')
             page.emulate_media(color_scheme='dark')
             expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
+            expect(page.locator('.platform-brand-wordmark')).to_have_css('filter', 'brightness(1.4)')
             expect(page.locator('[data-theme-mode="system"]')).to_have_attribute('aria-pressed', 'true')
             peer = context.new_page()
             peer.goto(self.url + '/dashboard_/monitor')
@@ -500,6 +578,594 @@ class AgentBrowserTests(unittest.TestCase):
             context.close()
             browser.close()
 
+    def test_agent_provider_profiles_have_a_tested_admin_setup_flow(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='zh-CN')
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(self.url + '/_ui/login/ui_config')
+            page.goto(self.url + '/setting_/agent_provider')
+            expect(page.locator('.agent-config-page')).to_be_visible(timeout=30000)
+            expect(page.locator('.agent-config-grid')).to_be_visible()
+            self.assertTrue(page.locator('.agent-config-form-card').evaluate('''element => {
+                const fields = [...element.querySelectorAll('.agent-config-field')]
+                    .filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect());
+                const [name, provider, ...fullWidth] = fields;
+                return fields.length === 5 && Math.abs(name.top - provider.top) < 1 &&
+                    Math.abs(name.width - provider.width) < 1 && provider.left > name.right &&
+                    fullWidth.every((field, i) => Math.abs(field.left - name.left) < 1 &&
+                        Math.abs(field.right - provider.right) < 1 &&
+                        field.top >= (i === 0 ? Math.max(name.bottom, provider.bottom) : fullWidth[i - 1].bottom));
+            }'''))
+
+            page.locator('#agent-provider-add').click()
+            page.locator('#agent-provider-name').fill('比赛接入 A')
+            page.locator('#agent-provider-url').fill('https://ui-test.invalid/v1')
+            page.locator('#agent-provider-model').fill('browser-model-a')
+            page.locator('#agent-provider-key').fill('browser-secret-profile-a')
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('加密保存', timeout=30000)
+            expect(page.locator('#agent-provider-key')).to_have_value('')
+            self.assertNotIn('browser-secret-profile-a', page.locator('body').inner_text())
+
+            page.locator('#agent-provider-add').click()
+            page.locator('#agent-provider-name').fill('比赛接入 B')
+            page.locator('#agent-provider-url').fill('https://ui-test.invalid/v1')
+            page.locator('#agent-provider-model').fill('browser-model-b')
+            page.locator('#agent-provider-key').fill('browser-secret-profile-b')
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('加密保存', timeout=30000)
+
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            page.set_viewport_size({'width': 390, 'height': 844})
+            page.locator('.agent-config-notice').scroll_into_view_if_needed()
+            self.assertTrue(page.locator('.agent-config-page').evaluate(
+                'element => element.scrollWidth <= element.clientWidth'))
+            page.screenshot(path=str(report / 'agent-configuration-390.png'))
+            page.set_viewport_size({'width': 320, 'height': 700})
+            page.locator('.agent-config-notice').scroll_into_view_if_needed()
+            self.assertTrue(page.locator('.agent-config-page').evaluate(
+                'element => element.scrollWidth <= element.clientWidth'))
+            page.screenshot(path=str(report / 'agent-configuration-320.png'))
+
+            page.set_viewport_size({'width': 1440, 'height': 900})
+            page.locator('.agent-config-notice').scroll_into_view_if_needed()
+            page.screenshot(path=str(report / 'agent-configuration-1440.png'))
+            page.goto(self.url + '/dashboard_/monitor')
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+            for label, model in [('比赛接入 A', 'browser-model-a'), ('比赛接入 B', 'browser-model-b')]:
+                page.locator('.ant-select').filter(has=page.locator('#agent-provider-profile')).locator(
+                    '.ant-select-selector').click()
+                page.locator('.ant-select-item-option').filter(has_text=label).click()
+                expect(page.locator('#agent-conversation-profile-feedback')).to_contain_text(model)
+                expect(page.locator('#agent-model-status')).to_have_text(model)
+                page.locator('#agent-prompt').fill('Verify ' + model)
+                page.locator('#agent-send').click()
+                expect(page.locator('#agent-messages')).to_contain_text('UI TEST REPLY: Verify ' + model,
+                                                                      timeout=30000)
+                expect(page.locator('#agent-prompt')).to_be_enabled()
+                self.assertEqual(context.request.get(self.url + '/_ui/stats').json()['models'][-1], model)
+            page.reload()
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-model-status')).to_have_text('browser-model-b', timeout=30000)
+            expect(page.locator('#agent-messages')).to_contain_text('Verify browser-model-a')
+            expect(page.locator('#agent-messages')).to_contain_text('Verify browser-model-b')
+
+            page.goto(self.url + '/setting_/agent_provider')
+            for remaining in (1, 0):
+                expect(page.locator('#agent-provider-name')).not_to_have_value('', timeout=30000)
+                page.locator('#agent-provider-delete').click()
+                page.locator('.ant-popover:visible').get_by_role('button', name='确认删除', exact=True).click()
+                expect(page.locator('.agent-config-feedback')).to_contain_text('已删除', timeout=30000)
+                page.reload()
+                expect(page.locator('.agent-config-list-foot')).to_contain_text(f'{remaining} / 12')
+
+            page.goto(self.url + '/_ui/login/ui_member')
+            page.goto(self.url + '/setting_/agent_provider')
+            expect(page.locator('.agent-config-page')).to_have_count(0)
+            expect(page.locator('body')).to_contain_text('您没有权限访问该页面', timeout=30000)
+            self.assertEqual(errors, [])
+            context.close()
+            browser.close()
+
+    def test_columbus_configuration_and_native_history_chat(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='zh-CN')
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(self.url + '/_ui/login/ui_columbus')
+            page.goto(self.url + '/setting_/agent_provider')
+            page.locator('#agent-provider-add').click()
+            page.locator('.ant-select').filter(has=page.locator('#agent-provider-kind')).locator(
+                '.ant-select-selector').click()
+            page.get_by_title('Columbus Agent', exact=True).click()
+            expect(page.locator('#agent-columbus-fields')).to_be_visible()
+            expect(page.locator('#agent-provider-model')).to_be_hidden()
+            page.locator('#agent-provider-name').fill('Columbus 比赛 Agent')
+            page.locator('#agent-provider-url').fill('https://columbus.invalid/v5')
+            page.locator('#agent-provider-key').fill('browser-columbus-subscription')
+            for key, value in {
+                'agent_id': '11111111-1111-4111-8111-111111111111',
+                'tenant_id': '22222222-2222-4222-8222-222222222222',
+                'client_id': '33333333-3333-4333-8333-333333333333',
+                'scope': 'api://browser-test/.default',
+                'client_secret': 'browser-columbus-client-secret',
+            }.items():
+                page.locator('#agent-columbus-' + key).fill(value)
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('加密保存', timeout=30000)
+            expect(page.locator('#agent-provider-key')).to_have_value('')
+            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            page.reload()
+            expect(page.locator('#agent-columbus-agent_id')).to_have_value(
+                '11111111-1111-4111-8111-111111111111', timeout=30000)
+            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('连接成功', timeout=30000)
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            for width, height in [(1440, 900), (1366, 768), (1024, 768), (768, 1024), (390, 844), (320, 700)]:
+                page.set_viewport_size({'width': width, 'height': height})
+                page.locator('#agent-columbus-fields').scroll_into_view_if_needed()
+                self.assertTrue(page.locator('.agent-config-page').evaluate(
+                    'element => element.scrollWidth <= element.clientWidth'))
+                self.assertTrue(page.locator('.platform-content-column').evaluate(
+                    'element => element.scrollWidth <= element.clientWidth'))
+                fields = page.locator('#agent-columbus-fields .agent-config-field').evaluate_all(
+                    'elements => elements.map(element => element.getBoundingClientRect().toJSON())')
+                if width > 640:
+                    self.assertAlmostEqual(fields[0]['top'], fields[1]['top'], delta=1)
+                    self.assertGreater(fields[1]['left'], fields[0]['right'])
+                else:
+                    self.assertGreater(fields[1]['top'], fields[0]['bottom'])
+                page.locator('.agent-config-form-card .agent-config-card-heading').scroll_into_view_if_needed()
+                self.assertTrue(page.locator('#agent-provider-save').evaluate('''element => {
+                    const box = element.getBoundingClientRect();
+                    return box.top >= 0 && box.bottom <= innerHeight &&
+                        element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+                }'''), f'Save button is not reachable without scrolling at {width}px')
+                self.assertTrue(page.locator('.agent-config-feedback').evaluate('''element => {
+                    const box = element.getBoundingClientRect();
+                    return box.top >= 0 && box.bottom <= innerHeight;
+                }'''), f'Connection feedback is outside the viewport at {width}px')
+                page.screenshot(path=str(report / f'columbus-configuration-{width}.png'))
+            page.set_viewport_size({'width': 1440, 'height': 900})
+            page.locator('#platform-appearance summary').click()
+            page.locator('[data-theme-mode="dark"]').click()
+            page.keyboard.press('Escape')
+            expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
+            page.locator('#agent-columbus-fields').scroll_into_view_if_needed()
+            page.screenshot(path=str(report / 'columbus-configuration-dark-1440.png'))
+            page.goto(self.url + '/dashboard_/monitor')
+            page.locator('#agent-launcher').click()
+            expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+            baseline = len(context.request.get(self.url + '/_ui/stats').json()['columbus_history_lengths'])
+            for prompt in ('First Columbus question', 'Continue Columbus question'):
+                page.locator('#agent-prompt').fill(prompt)
+                page.locator('#agent-send').click()
+                try:
+                    expect(page.locator('#agent-messages')).to_contain_text('COLUMBUS REPLY: ' + prompt,
+                                                                          timeout=30000)
+                except AssertionError as error:
+                    raise AssertionError(
+                        f'{error}\nPage errors: {errors}\n'
+                        f"Message HTML: {page.locator('#agent-messages').inner_html()}"
+                    ) from error
+                expect(page.locator('#agent-prompt')).to_be_enabled()
+                page.reload()
+                page.locator('#agent-launcher').click()
+                expect(page.locator('#agent-send')).to_be_enabled(timeout=30000)
+            lengths = context.request.get(self.url + '/_ui/stats').json()['columbus_history_lengths']
+            self.assertEqual(lengths[baseline:], [0, 1])
+            expect(page.locator('#agent-messages')).to_contain_text('First Columbus question')
+            expect(page.locator('#agent-messages')).to_contain_text('Continue Columbus question')
+            page.screenshot(path=str(report / 'columbus-chat-dark-1440.png'))
+            page.goto(self.url + '/setting_/agent_provider')
+            expect(page.locator('#agent-provider-name')).to_have_value('Columbus 比赛 Agent', timeout=30000)
+            page.locator('#agent-provider-delete').click()
+            page.get_by_role('button', name='确认删除', exact=True).click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('已删除', timeout=30000)
+            self.assertEqual(errors, [])
+            context.close()
+            browser.close()
+
+    def test_login_progress_and_failure_follow_language(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context()
+            page = context.new_page()
+            for locale, progress, failure in [
+                ('en-us', 'Verifying account', 'Username or password error'),
+                ('zh-cn', '正在验证账号', '用户名或密码错误'),
+            ]:
+                context.add_cookies([{'name': 'dash-i18n', 'value': locale, 'url': self.url}])
+                page.goto(self.url + '/login')
+                page.locator('#login-username').fill('locale-audit-missing-user')
+                page.locator('#login-password').fill('test-only-invalid-password')
+                pending = []
+
+                def hold_login(route):
+                    payload = route.request.post_data_json
+                    if 'login-store-fc.data' in str(payload.get('output', '')):
+                        pending.append(route)
+                    else:
+                        route.continue_()
+
+                page.route('**/_dash-update-component', hold_login)
+                page.locator('#login-submit').click()
+                expect(page.locator('#login-status')).to_contain_text(progress)
+                self.assertEqual(len(pending), 1)
+                pending[0].continue_()
+                expect(page.locator('body')).to_contain_text(failure)
+                expect(page.locator('#login-status')).to_have_text('')
+                page.unroute('**/_dash-update-component', hold_login)
+            context.close()
+            browser.close()
+
+    def test_all_registered_pages_switch_language(self):
+        import re
+        from playwright.sync_api import sync_playwright, expect
+
+        routes = [
+            '/dashboard_/monitor', '/person_/personal_info', '/message_/announcement',
+            '/access_/role_mgmt', '/access_/user_mgmt', '/access_/group_mgmt', '/access_/group_auth',
+            '/task_/overview', '/task_/task_mgmt', '/task_/windows_scheduler', '/task_/task_log',
+            '/setting_/notify_api', '/setting_/listen_api', '/setting_/agent_provider',
+            '/example_app/subapp1', '/example_app/subapp2',
+        ]
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1366, 'height': 900})
+            page = context.new_page()
+            page.goto(self.url + '/_ui/login/ui_i18n')
+            for locale in ('en-us', 'zh-cn'):
+                context.add_cookies([{
+                    'name': 'dash-i18n', 'value': locale, 'url': self.url,
+                }])
+                for route in routes:
+                    page.goto(self.url + route)
+                    pane = page.locator(f'[id="tabs-container-panel-{route}"]')
+                    expect(pane).to_be_visible(timeout=60000)
+                    # Wait for request-driven content rather than the initial empty tab.
+                    expect(pane).not_to_have_text('')
+                    if route == '/task_/task_mgmt':
+                        expect(page.locator('#tc-platform-table')).to_contain_text('ui_job', timeout=30000)
+                    elif route == '/dashboard_/monitor':
+                        expect(page.locator('#monitor-summary .monitor-metric')).to_have_count(4, timeout=30000)
+                    if locale == 'en-us':
+                        headings = pane.locator('h1, h2, h3, .ant-table-thead, .ant-form-item-label')
+                        for heading in headings.all():
+                            self.assertIsNone(re.search(r'[\u4e00-\u9fff]', heading.inner_text()), route)
+                        attributes = pane.locator('[placeholder], [aria-label]').evaluate_all(
+                            """elements => elements.filter(e => e.getClientRects().length).flatMap(e =>
+                                [e.getAttribute('placeholder'), e.getAttribute('aria-label')]).filter(Boolean)"""
+                        )
+                        self.assertFalse([text for text in attributes if re.search(r'[\u4e00-\u9fff]', text)],
+                                         route)
+                        if route.startswith(('/task_/', '/setting_/', '/example_app/')):
+                            expect(pane).not_to_contain_text(re.compile(r'[\u4e00-\u9fff]'))
+                        expect(page.locator('#main-menu')).not_to_contain_text(re.compile(r'[\u4e00-\u9fff]'))
+                    if route in ('/access_/role_mgmt', '/access_/user_mgmt', '/access_/group_mgmt'):
+                        prefix = route.rsplit('/', 1)[1].replace('_', '-')
+                        page.locator(f'#{prefix}-button-add').click()
+                        modal = page.locator('.ant-modal-content:visible')
+                        expect(modal).to_be_visible()
+                        if locale == 'en-us':
+                            expect(modal).not_to_contain_text(re.compile(r'[\u4e00-\u9fff]'))
+                page.goto(self.url + '/task_/task_mgmt')
+                page.locator('#tc-platform-create').click()
+                editor = page.locator('.ant-modal-content:visible')
+                expect(editor).to_be_visible()
+                expect(editor).to_contain_text('新建平台任务' if locale == 'zh-cn' else 'Create platform task')
+                if locale == 'en-us':
+                    expect(editor).not_to_contain_text(re.compile(r'[\u4e00-\u9fff]'))
+                page.goto(self.url + '/dashboard_/monitor')
+                page.locator('#agent-launcher').click()
+                expect(page.locator('#agent-panel')).to_be_visible()
+                if locale == 'en-us':
+                    page.wait_for_function("""() => {
+                        const panel = document.getElementById('agent-panel').cloneNode(true);
+                        panel.querySelectorAll(
+                            '.ant-select:has(#agent-conversation-select), .ant-select:has(#agent-provider-profile), ' +
+                            '#agent-conversation-title, #agent-messages, #agent-model-status'
+                        ).forEach(element => element.remove());
+                        return !/[\\u4e00-\\u9fff]/.test(panel.textContent);
+                    }""", timeout=15000)
+                page.goto(self.url + '/locale_audit_not_found')
+                expect(page.locator('.ant-result')).to_contain_text(
+                    '页面不存在' if locale == 'zh-cn' else 'Page not found')
+            page.goto(self.url + '/_ui/login/ui_member')
+            for locale, message in [('en-us', 'You do not have permission'), ('zh-cn', '您没有权限')]:
+                context.add_cookies([{'name': 'dash-i18n', 'value': locale, 'url': self.url}])
+                page.goto(self.url + '/setting_/agent_provider')
+                expect(page.locator('.ant-result')).to_contain_text(message)
+            context.clear_cookies()
+            context.add_cookies([{'name': 'dash-i18n', 'value': 'en-us', 'url': self.url}])
+            page.goto(self.url + '/login')
+            expect(page.locator('#login-container')).to_be_visible()
+            expect(page.locator('#login-container')).not_to_contain_text(re.compile(r'[\u4e00-\u9fff]'))
+            page.locator('#global-locale-switch').click()
+            expect(page.locator('#login-title')).to_have_text('登录')
+            context.close()
+            browser.close()
+
+    def test_settings_and_management_horizontal_alignment(self):
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1440, 'height': 900})
+            page = context.new_page()
+            page.goto(self.url + '/_ui/login/ui_config')
+            routes = [
+                ('/setting_/notify_api', '.channel-settings-page', '.channel-create-card'),
+                ('/setting_/listen_api', '.channel-settings-page', '.channel-create-card'),
+                ('/setting_/agent_provider', '.agent-config-page', '.agent-config-notice'),
+                ('/task_/task_mgmt', '.tc-page', '.tc-page-heading'),
+                ('/access_/role_mgmt', '#role-mgmt-button-add', '#role-mgmt-button-add'),
+            ]
+            for route, root, content in routes:
+                page.goto(self.url + route)
+                expect(page.locator(root + ':visible')).to_be_visible(timeout=60000)
+                for width in (1920, 1366, 768, 390, 320):
+                    page.set_viewport_size({'width': width, 'height': 900})
+                    measurements = page.locator(content + ':visible').evaluate(
+                        """element => {
+                            const pane = element.closest('.ant-tabs-tabpane');
+                            const style = getComputedStyle(pane);
+                            const bounds = pane.getBoundingClientRect();
+                            const content = element.getBoundingClientRect();
+                            return {
+                                left: content.left - bounds.left - parseFloat(style.paddingLeft),
+                                right: bounds.right - parseFloat(style.paddingRight) - content.right
+                            };
+                        }"""
+                    )
+                    self.assertAlmostEqual(measurements['left'], 0, delta=1,
+                                           msg=f'{route}: left edge at {width}px')
+                    if route != '/access_/role_mgmt':
+                        self.assertAlmostEqual(measurements['right'], 0, delta=1,
+                                               msg=f'{route}: right edge at {width}px')
+            context.close()
+            browser.close()
+
+    def test_channel_settings_layout_crud_themes_and_language(self):
+        import re
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1366, 'height': 768}, locale='zh-CN')
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(self.url + '/_ui/login/ui_config')
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+
+            def check_layout(prefix, state):
+                for width, height in [(1366, 768), (768, 1024), (390, 844), (320, 700)]:
+                    page.set_viewport_size({'width': width, 'height': height})
+                    page.locator('.channel-create-card').scroll_into_view_if_needed()
+                    self.assertTrue(page.locator('.channel-settings-page').evaluate(
+                        'element => element.scrollWidth <= element.clientWidth'), f'{prefix}: {width}px')
+                    self.assertTrue(page.locator('.platform-content-column').evaluate(
+                        'element => element.scrollWidth <= element.clientWidth'))
+                    for selector in ('.channel-card', '.channel-add-actions .ant-btn', '.channel-name-field'):
+                        for element in page.locator(selector).all():
+                            self.assertTrue(element.evaluate('element => element.scrollWidth <= element.clientWidth'),
+                                            f'{prefix} {selector}: {width}px')
+                    page.screenshot(path=str(report / f'{prefix}-{state}-{width}.png'))
+                page.set_viewport_size({'width': 1366, 'height': 768})
+
+            for kind in ('notify', 'listen'):
+                prefix = kind + '-api'
+                page.goto(self.url + f'/setting_/{kind}_api')
+                expect(page.locator('.channel-settings-page')).to_be_visible(timeout=30000)
+                expect(page.locator('.channel-activation-empty')).to_be_visible()
+                expect(page.locator('.channel-empty-state')).to_be_visible()
+                expect(page.locator('.channel-empty-icon svg')).to_have_count(1)
+                expect(page.locator('.channel-section-icon').first).to_have_css('width', '32px')
+                self.assertLess(page.locator('.channel-note-icon').first.bounding_box()['width'], 20)
+                expect(page.locator('.channel-card-heading h2').first).to_have_css('font-size', '14px')
+                self.assertNotIn('There are no available', page.locator('.channel-settings-page').inner_text())
+                check_layout(prefix, 'empty-zh')
+                if kind == 'notify':
+                    channels = [
+                        ('SMTP demo', 'notify-api-add-email-smtp', 'notify-api-email-smtp', {
+                            'Host': 'smtp.example.invalid', 'Port': '465', 'User': 'demo@example.invalid',
+                            'Password': 'browser-only-smtp', 'Receivers': 'recipient@example.invalid',
+                        }, 'Password'),
+                        ('Server demo', 'notify-api-add-serverchan', 'notify-api-server-jiang', {
+                            'SendKey': 'browser-only-sendkey', 'Channel': '9', 'Openid': 'demo-openid',
+                        }, 'SendKey'),
+                        ('Gewechat demo', 'notify-api-add-Gewechat', 'notify-api-Gewechat', {
+                            'token': 'browser-only-token', 'app_id': 'demo-app',
+                            'base_url': 'https://gewechat.invalid', 'wxid': 'demo-wxid',
+                        }, 'token'),
+                        ('WeCom demo', 'notify-api-add-wecom-group-robot', 'notify-api-wecom-group-robot', {
+                            'Key': 'browser-only-wecom',
+                        }, 'Key'),
+                    ]
+                else:
+                    channels = [('POP3 demo', 'listen-api-add-email-pop3', 'listen-api-pop3', {
+                        'pop3-server': 'pop.example.invalid', 'port': '995',
+                        'email-account': 'demo@example.invalid', 'password': 'browser-only-pop3',
+                    }, 'password')]
+                for name, add_id, field_prefix, values, secret in channels:
+                    page.locator('#' + prefix + '-add-name').fill(name)
+                    page.locator('#' + add_id).click()
+                    tab = page.locator('#' + prefix + '-edit-tabs').get_by_role('tab').filter(has_text=name)
+                    expect(tab).to_be_visible(timeout=15000)
+                    tab.click()
+                    expect(page.locator('.channel-empty-state')).to_have_count(0)
+                    expect(page.locator('.channel-activation-empty')).to_be_hidden()
+                    if kind == 'listen':
+                        expect(page.locator(f'input[id*="{field_prefix}-port"]')).to_have_value('995')
+                    for key, value in values.items():
+                        page.locator(f'input[id*="{field_prefix}-{key}"]').fill(value)
+                    expect(page.locator(f'input[id*="{field_prefix}-{secret}"]')).to_have_attribute('type', 'password')
+                    page.locator(f'button[id*="{field_prefix}-save"]').click()
+                    expect(page.locator('.ant-message')).to_contain_text('配置保存成功', timeout=15000)
+                    page.reload()
+                    tab = page.locator('#' + prefix + '-edit-tabs').get_by_role('tab').filter(has_text=name)
+                    expect(tab).to_be_visible(timeout=30000)
+                    tab.click()
+                    for key, value in values.items():
+                        expect(page.locator(f'input[id*="{field_prefix}-{key}"]')).to_have_value(value)
+                    page.locator('#' + prefix + '-activate').get_by_label(name, exact=True).check()
+                    expect(page.locator('#' + prefix + '-activate').get_by_label(name, exact=True)).to_be_checked()
+                    page.reload()
+                    expect(page.locator('#' + prefix + '-activate').get_by_label(name, exact=True)).to_be_checked(timeout=30000)
+                    page.locator('#' + prefix + '-edit-tabs').get_by_role('tab').filter(has_text=name).click()
+                    baseline = len(context.request.get(self.url + '/_ui/stats').json()['channel_test_calls'])
+                    page.locator(f'button[id*="{field_prefix}-test"]').click()
+                    expect(page.locator('.ant-message')).to_contain_text('成功', timeout=15000)
+                    self.assertEqual(len(context.request.get(self.url + '/_ui/stats').json()['channel_test_calls']),
+                                     baseline + 1)
+                check_layout(prefix, 'configured-zh')
+                page.locator('#global-locale-switch').click()
+                expect(page.locator('#' + prefix + '-add-name')).to_have_attribute('placeholder', 'e.g. Team alerts / Demo',
+                                                                                 timeout=30000)
+                for mode in ('light', 'dark'):
+                    page.locator('#platform-appearance summary').click()
+                    page.locator(f'[data-theme-mode="{mode}"]').click()
+                    page.keyboard.press('Escape')
+                    self.assertIsNone(re.search(r'[\u4e00-\u9fff]', page.locator('.channel-settings-page').inner_text()))
+                    check_layout(prefix, 'en-' + mode)
+                page.locator('#' + prefix + '-activate').get_by_label(channels[-1][0], exact=True).uncheck()
+                page.reload()
+                expect(page.locator('#' + prefix + '-activate').get_by_label(channels[-1][0], exact=True)).not_to_be_checked(
+                    timeout=30000)
+                page.locator('#global-locale-switch').click()
+                expect(page.locator('#' + prefix + '-add-name')).to_have_attribute('placeholder', '例如：团队告警 / 比赛演示',
+                                                                                 timeout=30000)
+            self.assertEqual(errors, [])
+            context.close()
+            browser.close()
+
+    def test_provider_settings_language_switch_and_compact_typography(self):
+        import re
+        from playwright.sync_api import sync_playwright, expect
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            context = browser.new_context(viewport={'width': 1366, 'height': 768}, locale='zh-CN')
+            page = context.new_page()
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.goto(self.url + '/_ui/login/ui_locale')
+            page.goto(self.url + '/setting_/agent_provider')
+            expect(page.locator('.agent-config-page')).to_be_visible(timeout=30000)
+            expect(page.locator('.agent-config-page h1')).to_have_count(0)
+            expect(page.locator('.agent-config-heading')).to_have_count(0)
+            expect(page.locator('.agent-config-profile-card #agent-config-live-status')).to_be_visible()
+            expect(page.locator('.agent-config-card-heading h2').first).to_have_css('font-size', '14px')
+            expect(page.locator('.agent-config-field label').first).to_have_css('font-size', '14px')
+            expect(page.locator('.agent-config-field small').first).to_have_css('font-size', '12px')
+            expect(page.locator('.agent-config-notice .ant-alert-message')).to_have_css('font-size', '14px')
+            expect(page.locator('.agent-config-notice .ant-alert-description')).to_have_css('font-size', '12px')
+
+            page.locator('#global-locale-switch').click()
+            expect(page.get_by_role('main', name='Agent Connections')).to_be_visible(timeout=30000)
+            expect(page.get_by_role('tab', name='Agent Connections', exact=True)).to_be_visible()
+            expect(page.locator('#platform-navigation')).to_contain_text('Agent Connections')
+            expect(page.locator('.agent-config-profile-card')).to_contain_text('Default service')
+            page.locator('#agent-provider-add').click()
+            expect(page.locator('#agent-provider-editor-status')).to_contain_text('New profile')
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Enter a profile name')
+            page.locator('.ant-select:has(#agent-provider-kind) .ant-select-selector').click()
+            page.get_by_title('Columbus Agent', exact=True).click()
+            page.locator('#agent-provider-name').fill('Bilingual Columbus')
+            page.locator('#agent-provider-url').fill('https://columbus.invalid/v5')
+            page.locator('#agent-provider-key').fill('browser-locale-subscription')
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Columbus Agent ID must be a valid UUID.')
+            for key, value in {
+                'agent_id': '11111111-1111-4111-8111-111111111111',
+                'tenant_id': '22222222-2222-4222-8222-222222222222',
+                'client_id': '33333333-3333-4333-8333-333333333333',
+                'scope': 'api://browser-test/.default',
+                'client_secret': 'browser-locale-secret',
+            }.items():
+                page.locator('#agent-columbus-' + key).fill(value)
+            page.locator('#agent-provider-test').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Connection successful', timeout=30000)
+            page.locator('#agent-provider-save').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Profile saved with encryption')
+            page.locator('#agent-provider-make-default').click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('Default profile updated')
+            expect(page.locator('#agent-config-live-detail')).to_contain_text('New conversations')
+            expect(page.locator('#agent-config-live-status')).to_have_text('Columbus Agent')
+            expect(page.locator('#agent-provider-key')).to_have_value('')
+            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            report = ROOT / 'cache/report/ui'
+            report.mkdir(parents=True, exist_ok=True)
+            for mode in ('light', 'dark'):
+                page.locator('#platform-appearance summary').click()
+                page.locator(f'[data-theme-mode="{mode}"]').click()
+                page.keyboard.press('Escape')
+                for width, height in [(1366, 768), (390, 844), (320, 700)]:
+                    page.set_viewport_size({'width': width, 'height': height})
+                    page.locator('.agent-config-form-card .agent-config-card-heading').scroll_into_view_if_needed()
+                    self.assertIsNone(re.search(r'[\u4e00-\u9fff]', page.locator('.agent-config-page').inner_text()))
+                    self.assertTrue(page.locator('.agent-config-page').evaluate(
+                        'element => element.scrollWidth <= element.clientWidth'))
+                    self.assertTrue(page.locator('.agent-config-page').evaluate('''element =>
+                        [...element.querySelectorAll('*')].filter(child => child.getClientRects().length &&
+                            !child.closest('.ant-select, .ant-input-affix-wrapper')).every(child => {
+                            const box = child.getBoundingClientRect();
+                            const page = element.getBoundingClientRect();
+                            return box.left >= page.left - 1 && box.right <= page.right + 1;
+                        })'''))
+                    for button in page.locator('.agent-config-actions .ant-btn').all():
+                        self.assertTrue(button.evaluate('element => element.scrollWidth <= element.clientWidth + 1'),
+                                        f'Action text overflows at {width}px: ' + str(button.evaluate(
+                                            """element => ({
+                                                text: element.textContent,
+                                                scroll: element.scrollWidth,
+                                                client: element.clientWidth,
+                                                width: element.getBoundingClientRect().width
+                                            })""")))
+                    page.screenshot(path=str(report / f'agent-settings-en-{mode}-{width}.png'))
+                page.set_viewport_size({'width': 1366, 'height': 768})
+            page.reload()
+            expect(page.get_by_role('main', name='Agent Connections')).to_be_visible(timeout=30000)
+            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Columbus')
+            expect(page.locator('#agent-provider-editor-status')).to_contain_text('Credentials are stored securely')
+            page.locator('#agent-provider-delete').click()
+            expect(page.locator('.ant-popover:visible')).to_contain_text('Local chat history is kept')
+            page.get_by_role('button', name='Cancel', exact=True).click()
+            page.locator('#global-locale-switch').click()
+            expect(page.get_by_role('main', name='Agent 接入')).to_be_visible(timeout=30000)
+            expect(page.get_by_role('tab', name='Agent 接入', exact=True)).to_be_visible()
+            expect(page.locator('#agent-provider-name')).to_have_value('Bilingual Columbus')
+            expect(page.locator('#agent-provider-key')).to_have_value('')
+            expect(page.locator('#agent-columbus-client_secret')).to_have_value('')
+            page.locator('#agent-provider-delete').click()
+            page.get_by_role('button', name='确认删除', exact=True).click()
+            expect(page.locator('.agent-config-feedback')).to_contain_text('配置已删除')
+            self.assertEqual(errors, [])
+            context.close()
+            browser.close()
+
     def test_robot_and_persistent_dialog(self):
         from playwright.sync_api import sync_playwright, expect
 
@@ -573,6 +1239,18 @@ class AgentBrowserTests(unittest.TestCase):
                     expect(page.locator('#agent-panel')).to_have_attribute('aria-modal', 'true')
                     self.assertTrue(page.locator('.platform-content-column').evaluate('element => element.inert'))
                 page.screenshot(path=str(report / f'agent-widget-{width}.png'))
+                if width > 700:
+                    page.locator('#agent-expand').click()
+                    expect(page.locator('#agent-widget')).to_have_attribute('data-expanded', 'true')
+                    self.assertTrue(page.locator('#agent-panel').evaluate('''element => {
+                        const box = element.getBoundingClientRect();
+                        return box.left >= 0 && box.top >= 0 && box.right <= innerWidth &&
+                            box.bottom <= innerHeight && element.scrollWidth <= element.clientWidth;
+                    }'''))
+                    page.screenshot(path=str(report / f'agent-widget-expanded-{width}.png'))
+                    page.locator('#agent-expand').click()
+                else:
+                    expect(page.locator('#agent-expand')).to_be_hidden()
             page.keyboard.press('Escape')
             expect(page.locator('#agent-panel')).to_be_hidden()
             self.assertFalse(page.locator('.platform-content-column').evaluate('element => element.inert'))

@@ -8,19 +8,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _page_view_source(module, page):
+def _page_view_source(module, page, page_type='list', with_i18n=False):
     root_id = f'{module}-{page["route"]}-content'
     callback_module = f'dash_callback.application.{module}.{page["route"]}_c'
+    template_capabilities = {
+        'list': ('metrics', 'filters', 'table'),
+        'dashboard': ('metrics', 'charts', 'filters', 'table'),
+        'form': ('form', 'validation'),
+    }
+    type_sections = {
+        'list': 'None',
+        'dashboard': (
+            "html.Section([html.H2('看板摘要', className='platform-template-section-title'), "
+            "html.P('将指标查询和图表放在此区域。', className='platform-template-hint')], "
+            "className='platform-template-dashboard')"
+        ),
+        'form': (
+            "fac.AntdForm([fac.AntdFormItem(fac.AntdInput(placeholder='请填写内容'), "
+            "label='示例字段')], layout='vertical', className='platform-template-form')"
+        ),
+    }
     template = '''import feffery_antd_components as fac
 from dash import html
 from common.utilities.util_menu_access import MenuAccess
 import __CALLBACK_MODULE__  # noqa
 from __CALLBACK_MODULE__ import SAMPLE_ROWS
+__I18N_IMPORT__
 
 title = __TITLE__
 icon = __ICON__
 order = __ORDER__
 access_metas = (__PERMISSION__,)
+template_type = __PAGE_TYPE__
+template_capabilities = __TEMPLATE_CAPABILITIES__
+__I18N_HELPER__
 
 
 def render_content(menu_access: MenuAccess, **kwargs):
@@ -29,11 +50,12 @@ def render_content(menu_access: MenuAccess, **kwargs):
     return html.Main([
         html.Header([
             html.Div([
-                html.Span('OPERATIONS / TEMPLATE', className='platform-template-kicker'),
-                html.H1(title, className='platform-template-title'),
+                html.Span(f'OPERATIONS / TEMPLATE / {template_type.upper()}', className='platform-template-kicker'),
+                html.H1(__DISPLAY_TITLE__, className='platform-template-title'),
             ]),
-            html.Div('示例数据', className='platform-template-sample-tag'),
+            html.Div(__SAMPLE_TAG__, className='platform-template-sample-tag'),
         ], className='platform-template-heading'),
+        __TYPE_SECTION__,
         html.Section([
             html.Article([
                 html.Span(label, className='platform-template-metric-label'),
@@ -58,10 +80,10 @@ def render_content(menu_access: MenuAccess, **kwargs):
             ], style={'width': '100%'}),
             fac.AntdButton('重置', id='__RESET_ID__', type='default',
                            icon=fac.AntdIcon(icon='antd-reload')),
-        ], className='platform-template-filters', **{'aria-label': '记录筛选'}),
+        ], className='platform-template-filters', **{'aria-label': __FILTER_LABEL__}),
         html.Section([
             html.Div([
-                html.H2('记录列表', className='platform-template-section-title'),
+                html.H2(__LIST_TITLE__, className='platform-template-section-title'),
                 html.Span(f'展示 {len(SAMPLE_ROWS)} 条示例记录', id='__STATUS_ID__', role='status'),
             ], className='platform-template-table-heading'),
             fac.AntdTable(
@@ -77,7 +99,9 @@ def render_content(menu_access: MenuAccess, **kwargs):
                 pagination={'pageSize': 8, 'showSizeChanger': False},
             ),
         ], className='platform-template-table-section'),
-    ], id='__ROOT_ID__', className='platform-template-page')
+    ], id='__ROOT_ID__', className='platform-template-page',
+       **{'data-template-type': template_type,
+          'data-template-capabilities': ','.join(template_capabilities)})
 '''
     replacements = {
         '__CALLBACK_MODULE__': callback_module,
@@ -91,13 +115,22 @@ def render_content(menu_access: MenuAccess, **kwargs):
         '__STATUS_ID__': root_id + '-result-status',
         '__TABLE_ID__': root_id + '-table',
         '__ROOT_ID__': root_id,
+        '__PAGE_TYPE__': repr(page_type),
+        '__TEMPLATE_CAPABILITIES__': repr(template_capabilities[page_type]),
+        '__I18N_IMPORT__': 'from functools import partial\nfrom i18n import translator' if with_i18n else '',
+        '__I18N_HELPER__': "t_page = partial(translator.t, locale_topic={!r})".format(module) if with_i18n else '',
+        '__SAMPLE_TAG__': "t_page('示例数据')" if with_i18n else repr('示例数据'),
+        '__FILTER_LABEL__': "t_page('记录筛选')" if with_i18n else repr('记录筛选'),
+        '__LIST_TITLE__': "t_page('记录列表')" if with_i18n else repr('记录列表'),
+        '__DISPLAY_TITLE__': "t_page(title)" if with_i18n else 'title',
+        '__TYPE_SECTION__': type_sections[page_type],
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
     return template
 
 
-def _page_callback_source(page):
+def _page_callback_source(module, page, with_i18n=False):
     template = '''"""Deterministic sample data and permission-checked page callbacks."""
 
 from dash import Input, Output
@@ -147,7 +180,7 @@ def reset_sample_filters(_clicks):
         raise PreventUpdate
     return '', 'all'
 '''
-    return template.replace('__ROOT_ID__', f'{page["route"]}-content').replace(
+    return template.replace('__ROOT_ID__', f'{module}-{page["route"]}-content').replace(
         '__PERMISSION__', repr(page['title'] + '-页面'))
 
 
@@ -177,7 +210,54 @@ def parse_subpages(sp_list):
     return result
 
 
-def scaffold(root, module, title, icon, order, subpages, dry_run=False):
+def _i18n_catalog(module, pages):
+    contents = {}
+    for page in pages:
+        contents.update({
+            page['title']: {'en-us': page['route'].replace('_', ' ').title()},
+            '示例数据': {'en-us': 'Sample data'},
+            '记录筛选': {'en-us': 'Record filters'},
+            '记录列表': {'en-us': 'Record list'},
+        })
+    return json.dumps(
+        {'root_locale': 'zh-cn', 'topic': module, 'contents': contents},
+        ensure_ascii=False,
+        indent=2,
+    ) + '\n'
+
+
+def _test_source(module, pages):
+    imports = '\n'.join(
+        f'from dash_view.application.{module} import {page["route"]} as {page["route"]}_page'
+        for page in pages
+    )
+    checks = '\n'.join(
+        f"        self.assertEqual({page['route']}_page.render_content(None).id, "
+        f"'{module}-{page['route']}-content')"
+        for page in pages
+    )
+    return f'''import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+
+{imports}
+
+
+class {module.title().replace('_', '')}PageTests(unittest.TestCase):
+    def test_pages_render_with_platform_contract(self):
+{checks}
+
+
+if __name__ == '__main__':
+    unittest.main()
+'''
+
+
+def scaffold(root, module, title, icon, order, subpages, dry_run=False,
+             page_type='list', with_i18n=False, with_tests=False):
     module = validate_identifier(module)
     if module.endswith('_'):
         raise ValueError('Names ending in _ are reserved for built-in applications')
@@ -202,9 +282,13 @@ def scaffold(root, module, title, icon, order, subpages, dry_run=False):
     }
     for page in pages:
         name = page['route']
-        files[view_dir / page['filename']] = _page_view_source(module, page)
-        files[callback_dir / f'{name}_c.py'] = _page_callback_source(page)
+        files[view_dir / page['filename']] = _page_view_source(module, page, page_type, with_i18n)
+        files[callback_dir / f'{name}_c.py'] = _page_callback_source(module, page, with_i18n)
     files[registry_path] = json.dumps(registry + paths, ensure_ascii=False, indent=2) + '\n'
+    if with_i18n:
+        files[root / 'src' / 'translations' / 'topic_locales' / f'{module}.json'] = _i18n_catalog(module, pages)
+    if with_tests:
+        files[root / 'tests' / f'test_{module}_pages.py'] = _test_source(module, pages)
     for path, content in files.items():
         if path.suffix == '.py':
             compile(content, str(path), 'exec')
@@ -222,10 +306,16 @@ def main():
     parser.add_argument('--icon', default='antd-appstore')
     parser.add_argument('--order', type=int, default=10)
     parser.add_argument('--subpage', action='append', required=True, help='title:page[:order[:icon]]')
+    parser.add_argument('--page-type', choices=('list', 'dashboard', 'form'), default='list')
+    parser.add_argument('--with-i18n', action='store_true', help='Generate a module translation catalog')
+    parser.add_argument('--with-tests', action='store_true', help='Generate a basic page contract test')
     parser.add_argument('--dry-run', action='store_true', help='Preview without writing files')
     args = parser.parse_args()
     try:
-        files = scaffold(ROOT, args.module, args.title, args.icon, args.order, args.subpage, args.dry_run)
+        files = scaffold(
+            ROOT, args.module, args.title, args.icon, args.order, args.subpage,
+            args.dry_run, args.page_type, args.with_i18n, args.with_tests,
+        )
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
     for path in files:

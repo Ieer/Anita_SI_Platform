@@ -26,6 +26,36 @@ def tool_call(name, arguments):
 
 
 class AgentTests(unittest.TestCase):
+    def test_provider_settings_localization_preserves_protocol_details(self):
+        import re
+        from dash_callback.application.setting_.agent_provider_c import translate_provider_message
+        from server import server
+
+        messages = [
+            ('请填写 1 到 64 个字符的配置名称。', 'Enter a profile name between 1 and 64 characters.'),
+            ('最多保存 12 个 Agent 配置。', 'You can save up to 12 Agent profiles.'),
+            ('Columbus Agent ID 必须是有效 UUID。', 'Columbus Agent ID must be a valid UUID.'),
+            ('请填写有效的 Columbus Scope。', 'Enter a valid Columbus Scope.'),
+            ('Provider“custom_agent”未在服务端注册。', 'Provider "custom_agent" is not registered on the server.'),
+            ('未注册的 Agent Provider：custom_agent', 'Unregistered Agent provider: custom_agent'),
+            ('Columbus Token 获取认证或授权失败，请检查凭证、订阅和 Scope。',
+             'Columbus token retrieval: authentication or authorization failed. Check credentials, subscription and Scope.'),
+            ('Columbus Agent 请求失败（HTTP 502），请联系管理员。',
+             'Columbus Agent request failed (HTTP 502). Contact an administrator.'),
+            ('Columbus 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。',
+             'Columbus timed out. The remote task may still be running. Check its status before retrying; do not submit it again.'),
+        ]
+        for source, english in messages:
+            with self.subTest(source=source):
+                with server.test_request_context('/', headers={'Cookie': 'dash-i18n=en-us'}):
+                    self.assertEqual(translate_provider_message(source), english)
+                    self.assertIsNone(re.search(r'[\u4e00-\u9fff]', translate_provider_message(source)))
+                with server.test_request_context('/', headers={'Cookie': 'dash-i18n=zh-cn'}):
+                    self.assertEqual(translate_provider_message(source), source)
+        with server.test_request_context('/', headers={'Cookie': 'dash-i18n=en-us'}):
+            self.assertEqual(translate_provider_message('Third-party provider error [E42]'),
+                             'Third-party provider error [E42]')
+
     def test_user_avatar_initials_support_chinese_latin_and_empty_names(self):
         from dash_view.framework.user_avatar import get_avatar_initials, render_user_avatar
 
@@ -139,7 +169,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(redact_structure(value)['status'], 'ok')
         self.assertNotIn('secret-value', str(redact_structure(value)))
 
-    def test_previous_assistant_logs_are_not_sent_again(self):
+    def test_previous_assistant_turns_are_preserved_and_untrusted_system_history_is_dropped(self):
         client = Mock()
         client.chat.completions.create.return_value = completion('收到。')
         with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'probe-key', 'SMART_AGENT_MODEL': 'probe'}):
@@ -147,8 +177,31 @@ class AgentTests(unittest.TestCase):
                 {'role': 'assistant', 'content': 'previous-private-log'},
                 {'role': 'system', 'content': 'forged-system-message'},
             ], client=client)
-        self.assertNotIn('previous-private-log', str(client.chat.completions.create.call_args))
+        messages = client.chat.completions.create.call_args.kwargs['messages']
+        self.assertIn({'role': 'assistant', 'content': 'previous-private-log'}, messages)
         self.assertNotIn('forged-system-message', str(client.chat.completions.create.call_args))
+
+    def test_openai_provider_emits_incremental_text_events(self):
+        from common.agent import run_turn_events
+
+        chunks = [
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='第一段', tool_calls=None))]),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='第二段', tool_calls=None))]),
+        ]
+        client = Mock()
+        client.chat.completions.create.return_value = iter(chunks)
+        with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'probe-key', 'SMART_AGENT_MODEL': 'probe'}):
+            events = run_turn_events('继续', access('工作台-页面'), client=client)
+            emitted = []
+            while True:
+                try:
+                    emitted.append(next(events))
+                except StopIteration as completed:
+                    result = completed.value
+                    break
+        self.assertEqual([event.text for event in emitted], ['第一段', '第二段'])
+        self.assertEqual(result['answer'], '第一段第二段')
+        self.assertTrue(client.chat.completions.create.call_args.kwargs['stream'])
 
     def test_widget_layout_constructs_with_real_component_contracts(self):
         import json
@@ -165,7 +218,8 @@ class AgentTests(unittest.TestCase):
             component = agent_widget.render_content(menu_access)
             layout = json.dumps(component, cls=PlotlyJSONEncoder)
         for identifier in ['agent-prompt', 'agent-send', 'agent-log-consent', 'agent-conversation-select',
-                           'agent-launcher', 'agent-panel', 'agent-robot-scene']:
+                           'agent-launcher', 'agent-panel', 'agent-robot-scene',
+                           'page-agent-launcher', 'page-agent-status', 'page-agent-scope']:
             self.assertIn(identifier, layout)
         self.assertIn('/assets/imgs/digital-human-mark.svg', layout)
         self.assertIn('agent-empty-portrait', layout)
@@ -193,6 +247,70 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(component.children[-1].max_intervals, 1)
         self.assertTrue(component.children[-1].disabled)
         self.assertNotIn('run_script', layout)
+
+    def test_page_agent_url_requires_a_credential_free_https_url(self):
+        from dash_view.framework.page_assistant import LOCAL_PAGE_AGENT_URL, page_agent_url, validate_page_agent_url
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(page_agent_url(), LOCAL_PAGE_AGENT_URL)
+        self.assertTrue(validate_page_agent_url(LOCAL_PAGE_AGENT_URL))
+        self.assertTrue(validate_page_agent_url('https://example.test/page-agent.js'))
+        self.assertFalse(validate_page_agent_url('http://example.test/page-agent.js'))
+        self.assertFalse(validate_page_agent_url('https://user:password@example.test/page-agent.js'))
+        self.assertFalse(validate_page_agent_url('https://example.test/page-agent.js?token=secret'))
+        self.assertFalse(validate_page_agent_url('/assets/vendor/page-agent/../secret.js'))
+        self.assertFalse(validate_page_agent_url('/assets/js/page-agent.js'))
+
+    def test_vendored_page_agent_asset_is_served_locally(self):
+        from app import server
+        from dash_callback.pages.agent_widget_c import load_page_agent
+        from dash_view.framework.page_assistant import LOCAL_PAGE_AGENT_URL
+
+        response = server.test_client().get(LOCAL_PAGE_AGENT_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'PageAgent', response.data)
+        with server.test_request_context('/'), \
+                patch('common.utilities.util_menu_access.get_menu_access',
+                      return_value=access('工作台-页面')), \
+                patch.dict(os.environ, {}, clear=True):
+            loaded_url, _, _, disabled = load_page_agent(1)
+        self.assertEqual(loaded_url, LOCAL_PAGE_AGENT_URL + '?autoInit=false')
+        self.assertTrue(disabled)
+
+    def test_page_agent_proxy_uses_server_side_openai_credentials(self):
+        from app import server
+
+        upstream = Mock(
+            status_code=200,
+            headers={'Content-Type': 'application/json'},
+            content=b'{"choices":[{"message":{"content":"ok"}}]}',
+        )
+        settings = ModelSettings('server-secret', 'internal-model', 'https://llm.intranet/v1')
+        with patch('server._page_agent_access', return_value=access('工作台-页面')), \
+                patch('database.sql_db.repositories.agent_provider_repository.default_profile_id',
+                      return_value=None), \
+                patch('common.agent.ModelSettings.from_environment', return_value=settings), \
+                patch('requests.post', return_value=upstream) as post:
+            response = server.test_client().post(
+                '/page_agent_llm/v1/chat/completions',
+                json={'model': 'browser-value', 'messages': [{'role': 'user', 'content': 'help'}],
+                      'stream': False},
+                headers={'Authorization': 'Bearer page-agent-browser', 'Origin': 'http://localhost'},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(post.call_args.args[0], 'https://llm.intranet/v1/chat/completions')
+        self.assertEqual(post.call_args.kwargs['headers']['Authorization'], 'Bearer server-secret')
+        self.assertEqual(post.call_args.kwargs['json']['model'], 'internal-model')
+        upstream.close.assert_called_once()
+
+    def test_page_agent_proxy_rejects_unidentified_browser_client(self):
+        from app import server
+
+        response = server.test_client().post(
+            '/page_agent_llm/v1/chat/completions',
+            json={'messages': [{'role': 'user', 'content': 'help'}]},
+        )
+        self.assertEqual(response.status_code, 401)
 
     def test_widget_formats_assistant_markdown_without_enabling_html(self):
         from dash import dcc, html
@@ -354,14 +472,27 @@ class ConversationTests(unittest.TestCase):
         from peewee import SqliteDatabase
 
         from database.sql_db.repositories import agent_repository
-        from database.sql_db.entity.table_agent import AgentAction, AgentConversation, AgentMessage
+        from database.sql_db.entity.table_agent import (
+            AgentAction, AgentConversation, AgentConversationProfile, AgentMessage,
+            AgentProviderOptions, AgentProviderProfile, AgentProviderState, AgentRemoteSession,
+        )
+        from database.sql_db.repositories import agent_provider_repository
 
         self.folder = tempfile.TemporaryDirectory()
         self.database = SqliteDatabase(Path(self.folder.name) / 'agent.db')
-        self.binding = self.database.bind_ctx([AgentConversation, AgentMessage, AgentAction])
+        self.binding = self.database.bind_ctx([
+            AgentAction, AgentConversation, AgentConversationProfile, AgentMessage,
+            AgentProviderOptions, AgentProviderProfile, AgentProviderState, AgentRemoteSession,
+        ])
         self.binding.__enter__()
         self.patcher = patch.object(agent_repository, 'db', return_value=self.database)
         self.patcher.start()
+        self.profile_patcher = patch.object(agent_provider_repository, 'db', return_value=self.database)
+        self.profile_patcher.start()
+        from config.anita_go_conf import CommonConf
+
+        self.key_patcher = patch.object(CommonConf, 'ENCRYPT_KEY', '33' * 32)
+        self.key_patcher.start()
         self.repository = agent_repository
         for boundary in [
                 patch('database.sql_db.repositories.task_center_repository.find_task', return_value=SimpleNamespace(task_id='task-probe')),
@@ -370,6 +501,8 @@ class ConversationTests(unittest.TestCase):
             self.addCleanup(boundary.stop)
 
     def tearDown(self):
+        self.key_patcher.stop()
+        self.profile_patcher.stop()
         self.patcher.stop()
         self.binding.__exit__(None, None, None)
         self.database.close()
@@ -400,6 +533,286 @@ class ConversationTests(unittest.TestCase):
         _, history = self.repository.begin_turn('alice', conversation_id, '重新查询')
         self.assertEqual([row['role'] for row in history], ['user'])
 
+    def test_remote_agent_sessions_are_owned_and_provider_scoped(self):
+        conversation_id = self.repository.create_conversation('alice')
+        self.repository.set_remote_session('alice', conversation_id, 'vendor_a', 'remote-a')
+        self.repository.set_remote_session('alice', conversation_id, 'vendor_b', 'remote-b')
+        self.assertEqual(self.repository.get_remote_session('alice', conversation_id, 'vendor_a'), 'remote-a')
+        self.assertEqual(self.repository.get_remote_session('alice', conversation_id, 'vendor_b'), 'remote-b')
+        self.assertIsNone(self.repository.get_remote_session('alice', conversation_id, 'vendor_c'))
+        with self.assertRaises(AgentError):
+            self.repository.get_remote_session('bob', conversation_id, 'vendor_a')
+
+    def test_provider_profiles_encrypt_secrets_and_blank_edit_keeps_existing_key(self):
+        from database.sql_db.entity.table_agent import AgentProviderProfile
+        from database.sql_db.repositories import agent_provider_repository
+
+        profile_id = agent_provider_repository.save_profile(
+            None, '比赛主 Agent', 'openai_compatible', 'https://api.example.com/v1',
+            'model-a', 'profile-secret-probe', True,
+        )
+        row = AgentProviderProfile.get_by_id(profile_id)
+        self.assertNotIn('profile-secret-probe', row.encrypted_api_key)
+        public_profile = agent_provider_repository.get_profile(profile_id)
+        self.assertNotIn('api_key', public_profile)
+        self.assertTrue(public_profile['has_api_key'])
+        self.assertEqual(agent_provider_repository.resolve_profile_settings(profile_id).api_key,
+                         'profile-secret-probe')
+
+        updated_id = agent_provider_repository.save_profile(
+            profile_id, '比赛主 Agent v2', 'openai_compatible', 'https://api.example.com/v1',
+            'model-b', '', False,
+        )
+        self.assertEqual(updated_id, profile_id)
+        updated = agent_provider_repository.get_profile(profile_id, include_secret=True)
+        self.assertEqual(updated['name'], '比赛主 Agent v2')
+        self.assertEqual(updated['model'], 'model-b')
+        self.assertEqual(updated['api_key'], 'profile-secret-probe')
+
+    def test_conversation_provider_switch_is_persisted_and_resets_remote_session(self):
+        from database.sql_db.repositories import agent_provider_repository
+
+        first = agent_provider_repository.save_profile(
+            None, '服务 A', 'openai_compatible', 'https://a.example.com/v1', 'model-a', 'key-a', True,
+        )
+        second = agent_provider_repository.save_profile(
+            None, '服务 B', 'openai_compatible', 'https://b.example.com/v1', 'model-b', 'key-b', False,
+        )
+        conversation_id = self.repository.create_conversation('alice')
+        self.assertEqual(agent_provider_repository.get_conversation_profile('alice', conversation_id), first)
+        first_settings = agent_provider_repository.resolve_profile_settings(first)
+        self.repository.set_remote_session('alice', conversation_id, first_settings.remote_session_key, 'remote-a')
+        turn_id, _ = self.repository.begin_turn('alice', conversation_id, 'First')
+        self.repository.finish_turn(
+            'alice', conversation_id, turn_id, 'Reply',
+            provider_id=first_settings.remote_session_key,
+            provider_state={'messages': [{'content': 'native-history'}]},
+        )
+
+        agent_provider_repository.set_conversation_profile('alice', conversation_id, second)
+        self.assertEqual(agent_provider_repository.get_conversation_profile('alice', conversation_id), second)
+        self.assertIsNone(self.repository.get_remote_session(
+            'alice', conversation_id, first_settings.remote_session_key))
+        self.assertIsNone(self.repository.get_provider_state(
+            'alice', conversation_id, first_settings.remote_session_key))
+        with self.assertRaises(AgentError):
+            agent_provider_repository.set_conversation_profile('bob', conversation_id, first)
+
+    def test_deleting_profile_migrates_conversations_and_clears_remote_sessions(self):
+        from database.sql_db.repositories import agent_provider_repository as profiles
+
+        first = profiles.save_profile(None, 'First', 'openai_compatible',
+                                      'https://example.com/v1', 'model-a', 'secret-a')
+        second = profiles.save_profile(None, 'Second', 'openai_compatible',
+                                       'https://example.com/v1', 'model-b', 'secret-b')
+        conversation = self.repository.create_conversation('alice')
+        self.repository.set_remote_session('alice', conversation, 'provider-a', 'remote-a')
+        profiles.delete_profile(first)
+        self.assertEqual(profiles.get_conversation_profile('alice', conversation), second)
+        self.assertEqual(profiles.default_profile_id(), second)
+        self.assertIsNone(self.repository.get_remote_session('alice', conversation, 'provider-a'))
+        with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe'}):
+            profiles.delete_profile(second)
+            self.assertEqual(profiles.get_conversation_profile('alice', conversation), 'environment')
+
+    def test_connection_test_never_exposes_tools_to_the_provider(self):
+        from common.agent import test_provider_connection
+
+        client = Mock()
+        client.chat.completions.create.return_value = completion('OK')
+        settings = ModelSettings(
+            api_key='test-secret', model='probe', base_url='https://mock.invalid/v1',
+        )
+        result = test_provider_connection(settings, client=client)
+        self.assertEqual(result['message'], '连接成功，服务已返回测试回答。')
+        self.assertNotIn('tools', client.chat.completions.create.call_args.kwargs)
+
+    def _columbus_profile(self):
+        from database.sql_db.repositories import agent_provider_repository as profiles
+
+        options = {
+            'agent_id': '11111111-1111-4111-8111-111111111111',
+            'tenant_id': '22222222-2222-4222-8222-222222222222',
+            'client_id': '33333333-3333-4333-8333-333333333333',
+            'client_secret': 'repository-test-client-secret', 'scope': 'api://test/.default',
+        }
+        profile_id = profiles.save_profile(
+            None, 'Columbus', 'columbus_agent', 'https://columbus.invalid/v5', '',
+            'repository-test-subscription', provider_options=options)
+        return profile_id, options
+
+    def test_columbus_profile_encrypts_both_secrets_and_blank_edit_preserves_them(self):
+        import json
+        from database.sql_db.repositories import agent_provider_repository as profiles
+        from database.sql_db.entity.table_agent import AgentProviderOptions
+
+        profile_id, options = self._columbus_profile()
+        public = profiles.get_profile(profile_id)
+        self.assertNotIn('client_secret', json.dumps(public))
+        encrypted = AgentProviderOptions.get_by_id(profile_id).encrypted_options
+        self.assertNotIn(options['client_secret'], encrypted)
+        edited = {key: value for key, value in options.items() if key != 'client_secret'}
+        profiles.save_profile(profile_id, 'Renamed', 'columbus_agent', 'https://columbus.invalid/v5',
+                              '', '', provider_options=edited)
+        private = profiles.get_profile(profile_id, include_secret=True)
+        self.assertEqual(private['provider_options'], options)
+        self.assertEqual(private['api_key'], 'repository-test-subscription')
+
+    def test_legacy_profiles_work_when_columbus_tables_are_created_on_upgrade(self):
+        from database.sql_db.repositories import agent_provider_repository as profiles
+        from database.sql_db.entity.table_agent import AgentProviderOptions, AgentProviderState
+
+        profile_id = profiles.save_profile(
+            None, 'Existing', 'openai_compatible', 'https://existing.invalid/v1', 'existing-model', 'existing-key')
+        conversation = self.repository.create_conversation('alice')
+        self.database.drop_tables([AgentProviderOptions, AgentProviderState])
+        restored = profiles.resolve_profile_settings(profile_id)
+        self.assertEqual(restored.api_key, 'existing-key')
+        self.assertEqual(restored.model, 'existing-model')
+        self.assertEqual(restored.provider_options, {})
+        self.assertIsNone(self.repository.get_provider_state('alice', conversation, restored.remote_session_key))
+        self.assertTrue(AgentProviderOptions.table_exists())
+        self.assertTrue(AgentProviderState.table_exists())
+
+    def test_provider_state_is_encrypted_owned_atomic_and_reset_on_connection_changes(self):
+        from database.sql_db.repositories import agent_provider_repository as profiles
+        from database.sql_db.entity.table_agent import AgentProviderState
+
+        profile_id, options = self._columbus_profile()
+        settings = profiles.resolve_profile_settings(profile_id)
+        conversation = self.repository.create_conversation('alice')
+        turn, _ = self.repository.begin_turn('alice', conversation, 'First')
+        state = {'messages': [{'text': 'private-native-history'}]}
+        self.repository.finish_turn('alice', conversation, turn, 'Reply',
+                                    provider_id=settings.remote_session_key, provider_state=state)
+        self.assertNotIn('private-native-history', AgentProviderState.get().encrypted_state)
+        self.assertEqual(self.repository.get_provider_state('alice', conversation, settings.remote_session_key), state)
+        self.assertIsNone(self.repository.get_provider_state('alice', conversation, 'another-profile'))
+        with self.assertRaises(AgentError):
+            self.repository.get_provider_state('bob', conversation, settings.remote_session_key)
+        turn, _ = self.repository.begin_turn('alice', conversation, 'Next')
+        with self.assertRaisesRegex(AgentError, '正在处理'):
+            profiles.save_profile(profile_id, 'Edited', 'columbus_agent', 'https://changed.invalid/v5',
+                                  '', '', provider_options=options)
+        self.repository.finish_turn('alice', conversation, turn, 'Failed', failed=True,
+                                    provider_id=settings.remote_session_key,
+                                    provider_state={'messages': [{'text': 'invalid advancement'}]})
+        self.assertEqual(self.repository.get_provider_state('alice', conversation, settings.remote_session_key), state)
+        profiles.save_profile(profile_id, 'Edited', 'columbus_agent', 'https://changed.invalid/v5',
+                              '', '', provider_options=options)
+        self.assertIsNone(self.repository.get_provider_state('alice', conversation, settings.remote_session_key))
+
+    def test_columbus_sse_route_persists_native_history_across_two_turns(self):
+        import json
+        import httpx
+        from common.columbus_provider import ColumbusProvider, _tokens
+        from database.sql_db.repositories import agent_provider_repository as profiles
+        from app import server
+
+        _tokens.clear()
+        profile_id, _ = self._columbus_profile()
+        conversation = self.repository.create_conversation('probe')
+        calls = []
+
+        def transport(request):
+            if request.url.host == 'login.microsoftonline.com':
+                return httpx.Response(200, json={
+                    'access_token': 'route-test-token', 'token_type': 'Bearer', 'expires_in': 3600,
+                })
+            calls.append(json.loads(request.content))
+            return httpx.Response(200, json={
+                'response': {'status': 'SUCCESS', 'model': 'columbus-test', 'output': [{
+                    'role': 'assistant', 'type': 'message',
+                    'content': [{'type': 'output_text', 'text': 'Columbus reply'}],
+                }]},
+                'messages': [{'role': 'assistant', 'native': f'turn-{len(calls)}'}],
+            })
+
+        with httpx.Client(transport=httpx.MockTransport(transport)) as client, \
+                patch('common.utilities.util_menu_access.get_menu_access', return_value=access('工作台-页面')), \
+                patch('common.agent_providers.create_provider',
+                      side_effect=lambda settings, **kwargs: ColumbusProvider(settings, client)):
+            for prompt in ('First', 'Second'):
+                response = server.test_client().post('/agent_stream', json={
+                    'conversation_id': conversation, 'profile_id': profile_id,
+                    'prompt': prompt, 'allow_log_export': False,
+                }, buffered=True)
+                self.assertIn('event: completed', response.get_data(as_text=True))
+                self.assertNotIn('messages', response.get_data(as_text=True))
+        self.assertEqual(calls[0]['history'], [])
+        self.assertEqual(calls[1]['history'], [{'role': 'assistant', 'native': 'turn-1'}])
+        key = profiles.resolve_profile_settings(profile_id).remote_session_key
+        self.assertEqual(self.repository.get_provider_state('probe', conversation, key)['messages'][0]['native'],
+                         'turn-2')
+        profiles.delete_profile(profile_id)
+        self.assertIsNone(self.repository.get_provider_state('probe', conversation, key))
+
+    def test_agent_stream_route_persists_response_and_remote_session(self):
+        from server import server
+        from common.agent_providers import AgentStreamEvent
+
+        conversation_id = self.repository.create_conversation('probe')
+
+        def stream_turn(*args, **kwargs):
+            yield AgentStreamEvent('delta', '增量答复')
+            return {
+                'answer': '完整答复',
+                'trace': [],
+                'model': 'probe',
+                'proposals': [],
+                'provider': 'openai_compatible',
+                'remote_conversation_id': 'remote-probe',
+            }
+
+        payload = {
+            'conversation_id': conversation_id,
+            'prompt': '继续',
+            'allow_log_export': False,
+        }
+        with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'probe-key', 'SMART_AGENT_MODEL': 'probe'}), \
+                patch('common.utilities.util_menu_access.get_menu_access', return_value=access('工作台-页面')), \
+                patch('common.agent.run_turn_events', side_effect=stream_turn):
+            response = server.test_client().post('/agent_stream', json=payload, buffered=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('event: delta', response.get_data(as_text=True))
+        self.assertIn('增量答复', response.get_data(as_text=True))
+        self.assertIn('event: completed', response.get_data(as_text=True))
+        self.assertEqual(
+            [message['role'] for message in self.repository.read_messages('probe', conversation_id)],
+            ['user', 'assistant'],
+        )
+        self.assertEqual(
+            self.repository.get_remote_session('probe', conversation_id, 'openai_compatible'),
+            'remote-probe',
+        )
+
+    def test_agent_stream_route_persists_provider_error(self):
+        from server import server
+
+        conversation_id = self.repository.create_conversation('probe')
+
+        def fail_turn(*args, **kwargs):
+            if False:
+                yield None
+            raise AgentError('Agent 服务暂不可用。')
+
+        payload = {
+            'conversation_id': conversation_id,
+            'prompt': '继续',
+            'allow_log_export': False,
+        }
+        with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'probe-key', 'SMART_AGENT_MODEL': 'probe'}), \
+                patch('common.utilities.util_menu_access.get_menu_access', return_value=access('工作台-页面')), \
+                patch('common.agent.run_turn_events', side_effect=fail_turn):
+            response = server.test_client().post('/agent_stream', json=payload, buffered=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('event: error', response.get_data(as_text=True))
+        messages = self.repository.read_messages('probe', conversation_id)
+        self.assertEqual([message['role'] for message in messages], ['user', 'error'])
+        self.assertIn('Agent 服务暂不可用', messages[-1]['content'])
+
     def test_saved_content_and_trace_redact_secrets(self):
         conversation_id = self.repository.create_conversation('alice')
         with patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'private-probe'}):
@@ -427,6 +840,38 @@ class ConversationTests(unittest.TestCase):
             self.assertNotIn('private-other', str(result))
             self.assertIsNone(apscheduler_repository.get_latest_completed_log('missing'))
 
+    def test_callback_initializes_conversation_with_environment_profile(self):
+        from dash_callback.pages import agent_widget_c
+        from server import server
+
+        menu_access = access('工作台-页面')
+        with server.test_request_context('/'), \
+                patch('common.utilities.util_menu_access.get_menu_access', return_value=menu_access), \
+                patch.object(agent_widget_c, 'get_menu_access', return_value=menu_access), \
+                patch.object(agent_widget_c, 'ctx', SimpleNamespace(triggered_id='agent-init')), \
+                patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe'}), \
+                patch.object(agent_widget_c, 'set_props') as set_props:
+            options, selected, profiles, profile_id = agent_widget_c.initialize_conversations(1, None)
+        self.assertEqual(options[0]['value'], selected)
+        self.assertEqual(profile_id, 'environment')
+        self.assertIn('environment', [profile['value'] for profile in profiles])
+        set_props.assert_called_once_with('agent-conversation-title', {'data-profile-id': 'environment'})
+
+    def test_non_admin_cannot_invoke_provider_management_callback(self):
+        from dash.exceptions import PreventUpdate
+        from dash_callback.application.setting_ import agent_provider_c
+        from server import server
+
+        with server.test_request_context('/'), \
+                patch('common.utilities.util_menu_access.get_menu_access',
+                      return_value=access('工作台-页面')), \
+                patch.object(agent_provider_c.agent_provider_repository, 'save_profile') as save:
+            with self.assertRaises(PreventUpdate):
+                agent_provider_c.manage_provider_profile(
+                    0, 1, 0, 0, None, 'Forbidden', 'openai_compatible',
+                    'https://example.com/v1', 'probe', 'test-only', False, 0)
+        save.assert_not_called()
+
     def test_callback_persists_reply_and_returns_rendered_messages(self):
         from dash_callback.pages import agent_widget_c as workbench_c
         from server import server
@@ -439,8 +884,8 @@ class ConversationTests(unittest.TestCase):
                 patch.object(workbench_c, 'ctx', SimpleNamespace(triggered_id='agent-send')), \
                 patch.object(workbench_c, 'run_turn', return_value={'answer': '测试回复', 'trace': [], 'model': 'probe'}), \
                 patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe'}), \
-                patch('dash.set_props'):
-            result = workbench_c.handle_conversation(conversation_id, 1, conversation_id, '查询任务', False)
+                patch.object(workbench_c, 'set_props'):
+            result = workbench_c.handle_conversation(conversation_id, 1, None, conversation_id, '查询任务', False)
         self.assertEqual(result[1], conversation_id)
         self.assertEqual(result[3], '')
         self.assertEqual(self.repository.read_messages(menu_access.user_name, conversation_id)[-1]['content'], '测试回复')
@@ -456,8 +901,10 @@ class ConversationTests(unittest.TestCase):
                 patch.object(workbench_c, 'get_menu_access', return_value=menu_access), \
                 patch.object(workbench_c, 'ctx', SimpleNamespace(triggered_id='agent-send')), \
                 patch.object(workbench_c, 'run_turn', side_effect=AgentError('模型超时')), \
+                patch.object(workbench_c, 'set_props') as set_props, \
                 patch.dict(os.environ, {'SMART_AGENT_API_KEY': 'test-only', 'SMART_AGENT_MODEL': 'probe'}):
-            result = workbench_c.handle_conversation(conversation_id, 1, conversation_id, '查询任务', False)
+            result = workbench_c.handle_conversation(conversation_id, 1, None, conversation_id, '查询任务', False)
+        set_props.assert_called_once_with('agent-progress', {'children': '正在处理请求…'})
         self.assertEqual(result[-1], '模型超时')
         self.assertEqual(self.repository.read_messages(menu_access.user_name, conversation_id)[-1]['role'], 'error')
         self.repository.begin_turn(menu_access.user_name, conversation_id, '重试查询')

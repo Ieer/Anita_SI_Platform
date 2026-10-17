@@ -2,6 +2,7 @@ import unicodedata
 
 import feffery_antd_components as fac
 from config.anita_go_conf import PathProj
+from i18n import t__default
 
 
 def get_avatar_initials(user_info):
@@ -30,7 +31,7 @@ def avatar_file_exists(user_info):
 
 def render_user_avatar(user_info, size=36, component_id=None, class_name=None, avatar_exists=None):
     user_name = str(getattr(user_info, 'user_name', '') or '').strip()
-    display_name = str(getattr(user_info, 'user_full_name', '') or '').strip() or user_name or '未知用户'
+    display_name = str(getattr(user_info, 'user_full_name', '') or '').strip() or user_name or t__default('未知用户')
     initials = get_avatar_initials(user_info)
     if avatar_exists is None:
         avatar_exists = avatar_file_exists(user_info)

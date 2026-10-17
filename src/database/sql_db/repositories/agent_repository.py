@@ -3,17 +3,28 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from common.agent import AgentError, redact, redact_structure
+from common.agent import AgentError, MAX_PROVIDER_STATE_BYTES, redact, redact_structure
 from ..conn import db
-from ..entity.table_agent import AgentAction, AgentConversation, AgentMessage
+from ..entity.table_agent import (
+    AgentAction, AgentConversation, AgentConversationProfile, AgentMessage, AgentProviderState, AgentRemoteSession,
+)
 
 
 @contextmanager
 def _session():
     database = db()
     with database.connection_context():
-        database.create_tables([AgentConversation, AgentMessage, AgentAction], safe=True)
+        database.create_tables([
+            AgentConversation, AgentConversationProfile, AgentRemoteSession, AgentMessage, AgentAction,
+            AgentProviderState,
+        ], safe=True)
         yield database
+
+
+def _profile_default():
+    from . import agent_provider_repository
+
+    return agent_provider_repository.default_profile_id()
 
 
 def _owned(owner, conversation_id):
@@ -25,8 +36,13 @@ def _owned(owner, conversation_id):
 
 
 def create_conversation(owner):
+    default_profile = _profile_default()
     with _session():
         conversation = AgentConversation.create(conversation_id=uuid4().hex, owner=owner)
+        AgentConversationProfile.create(
+            conversation_id=conversation.conversation_id,
+            profile_id=default_profile,
+        )
         return conversation.conversation_id
 
 
@@ -47,6 +63,36 @@ def read_messages(owner, conversation_id):
              'created_at': row['created_at'].isoformat()}
             for row in reversed(rows)
         ]
+
+
+def get_remote_session(owner, conversation_id, provider_id):
+    with _session():
+        conversation = _owned(owner, conversation_id)
+        remote = AgentRemoteSession.get_or_none(
+            (AgentRemoteSession.conversation == conversation)
+            & (AgentRemoteSession.provider_id == provider_id))
+        return remote.remote_conversation_id if remote else None
+
+
+def set_remote_session(owner, conversation_id, provider_id, remote_conversation_id):
+    if (not isinstance(provider_id, str) or not provider_id or len(provider_id) > 64
+            or (remote_conversation_id is not None
+                and (not isinstance(remote_conversation_id, str) or len(remote_conversation_id) > 512))):
+        raise AgentError('远端会话标识无效。')
+    if remote_conversation_id is None:
+        return
+    with _session() as database, database.atomic():
+        conversation = _owned(owner, conversation_id)
+        remote, created = AgentRemoteSession.get_or_create(
+            conversation=conversation,
+            provider_id=provider_id,
+            defaults={'remote_conversation_id': remote_conversation_id},
+        )
+        if not created and remote.remote_conversation_id != remote_conversation_id:
+            AgentRemoteSession.update(
+                remote_conversation_id=remote_conversation_id,
+                updated_at=datetime.now(),
+            ).where(AgentRemoteSession.id == remote.id).execute()
 
 
 def begin_turn(owner, conversation_id, prompt):
@@ -76,7 +122,18 @@ def begin_turn(owner, conversation_id, prompt):
     return turn_id, history
 
 
-def finish_turn(owner, conversation_id, turn_id, content, trace=(), model_name=None, failed=False, proposals=()):
+def get_provider_state(owner, conversation_id, provider_id):
+    from .agent_provider_repository import _decrypt
+
+    with _session():
+        conversation = _owned(owner, conversation_id)
+        state = AgentProviderState.get_or_none(
+            (AgentProviderState.conversation == conversation) & (AgentProviderState.provider_id == provider_id))
+        return json.loads(_decrypt(state.encrypted_state)) if state else None
+
+
+def finish_turn(owner, conversation_id, turn_id, content, trace=(), model_name=None, failed=False, proposals=(),
+                provider_id=None, provider_state=None):
     with _session() as database, database.atomic():
         conversation = _owned(owner, conversation_id)
         updated = (AgentConversation.update(pending_turn=None, updated_at=datetime.now(), model_name=model_name)
@@ -88,6 +145,19 @@ def finish_turn(owner, conversation_id, turn_id, content, trace=(), model_name=N
         AgentMessage.create(conversation=conversation, role='error' if failed else 'assistant',
                             content=redact(content)[:8000],
                             trace=json.dumps(redact_structure(list(trace)), ensure_ascii=False))
+        if not failed and provider_state is not None:
+            from .agent_provider_repository import _encrypt
+
+            if not provider_id or len(provider_id) > 64 or not isinstance(provider_state, dict):
+                raise AgentError('Provider 对话状态无效。')
+            state_json = json.dumps(provider_state, ensure_ascii=False)
+            if len(state_json.encode('utf-8')) > MAX_PROVIDER_STATE_BYTES:
+                raise AgentError('Provider 对话状态过大。')
+            AgentProviderState.delete().where(
+                (AgentProviderState.conversation == conversation)
+                & (AgentProviderState.provider_id == provider_id)).execute()
+            AgentProviderState.create(conversation=conversation, provider_id=provider_id,
+                                      encrypted_state=_encrypt(state_json))
         if not failed:
             for proposal in proposals:
                 action_id = uuid4().hex

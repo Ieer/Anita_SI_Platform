@@ -9,6 +9,32 @@
     let responseSignature = '';
     let lastState = 'idle';
 
+    function agentI18n() {
+        try { return JSON.parse(widget?.dataset.agentI18n || '{}'); }
+        catch { return {}; }
+    }
+
+    function localizedLabel(key) {
+        const labels = agentI18n().labels || {};
+        return labels[key] || key;
+    }
+
+    function localizedMessage(message) {
+        if (typeof message !== 'string') return message ?? '';
+        const translations = agentI18n();
+        const translated = translations.messages?.[message];
+        if (translated) return translated;
+        for (const entry of translations.patterns || []) {
+            const match = message.match(new RegExp(entry.pattern));
+            if (!match) continue;
+            return entry.groups.reduce((result, name, index) => {
+                const value = entry.translations?.[name]?.[match[index + 1]] || match[index + 1];
+                return result.replace(`{${name}}`, value);
+            }, entry.template);
+        }
+        return message;
+    }
+
     function restoreBackground() {
         inertElements.forEach(([element, previous]) => {
             if (element.classList.contains('platform-content-column')) {
@@ -61,8 +87,8 @@
         panel.hidden = !open;
         widget.dataset.open = String(open);
         launcher.setAttribute('aria-expanded', String(open));
-        launcher.setAttribute('aria-label', open ? '收起 Agent 对话' : '打开 Agent 对话');
-        launcher.title = open ? '收起 Agent 对话' : '打开 Agent 对话';
+        launcher.setAttribute('aria-label', localizedLabel(open ? 'closeChat' : 'openChat'));
+        launcher.title = localizedLabel(open ? 'closeChat' : 'openChat');
         syncModal();
         if (open) {
             if (!widget.dataset.initialized) {
@@ -289,6 +315,133 @@
         updateConversation();
     }
 
+    function setAgentProps(id, properties) {
+        if (typeof window.dash_clientside?.set_props !== 'function') {
+            throw new Error(localizedLabel('controlsUnavailable'));
+        }
+        window.dash_clientside.set_props(id, properties);
+    }
+
+    async function sendAgentMessage() {
+        const promptControl = widget?.querySelector('#agent-prompt');
+        const input = promptControl?.matches('textarea, input')
+            ? promptControl : promptControl?.querySelector('textarea, input');
+        const conversationId = widget?.querySelector('#agent-conversation-title')?.dataset.conversationId;
+        const profileId = widget?.querySelector('#agent-conversation-title')?.dataset.profileId;
+        const prompt = input?.value?.trim();
+        if (!prompt || !conversationId || widget.dataset.streaming === 'true') return;
+
+        const consentControl = widget.querySelector('#agent-log-consent');
+        const consentInput = consentControl?.matches('input[type="checkbox"]')
+            ? consentControl : consentControl?.querySelector('input[type="checkbox"]');
+        const consent = consentInput ? consentInput.checked :
+            consentControl?.getAttribute('aria-checked') === 'true';
+        let text = `${localizedLabel('youPrefix')}${prompt}\nAnita：`;
+        let receivedCompletion = false;
+        widget.dataset.streaming = 'true';
+        setAgentProps('agent-stream-output', {children: text});
+        setAgentProps('agent-status', {children: ''});
+        setAgentProps('agent-progress', {children: localizedLabel('connecting')});
+        setAgentProps('agent-send', {loading: true, disabled: true});
+        setAgentProps('agent-prompt', {disabled: true});
+        setAgentProps('agent-provider-profile', {disabled: true});
+
+        const refreshMessages = () => setAgentProps('agent-stream-refresh', {data: `${Date.now()}-${Math.random()}`});
+        const handleFrame = frame => {
+            if (!frame.trim()) return;
+            let eventName = 'message';
+            let data = '';
+            for (const line of frame.split(/\r?\n/)) {
+                if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                else if (line.startsWith('data:')) data += line.slice(5).trim();
+            }
+            let payload;
+            try { payload = JSON.parse(data || '{}'); }
+            catch { throw new Error(localizedLabel('invalidStreamEvent')); }
+            if (eventName === 'delta') {
+                text += payload.text || '';
+                setAgentProps('agent-stream-output', {children: text});
+                const scroll = widget.querySelector('.agent-panel-scroll');
+                if (scroll) scroll.scrollTop = scroll.scrollHeight;
+            } else if (eventName === 'status') {
+                setAgentProps('agent-progress', {
+                    children: localizedMessage(payload.text) || localizedLabel('processing'),
+                });
+            } else if (eventName === 'completed') {
+                receivedCompletion = true;
+                setAgentProps('agent-progress', {children: ''});
+                setAgentProps('agent-stream-output', {children: ''});
+                refreshMessages();
+            } else if (eventName === 'error') {
+                setAgentProps('agent-status', {
+                    children: localizedMessage(payload.message || localizedLabel('requestFailed')),
+                });
+                setAgentProps('agent-stream-output', {children: ''});
+                refreshMessages();
+                throw new Error('stream-error');
+            }
+        };
+
+        try {
+            const response = await fetch('/agent_stream', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json', 'Accept': 'text/event-stream'},
+                body: JSON.stringify({
+                    conversation_id: conversationId,
+                    profile_id: profileId || null,
+                    prompt,
+                    allow_log_export: consent === true,
+                }),
+            });
+            if (!response.ok) {
+                let message = `Agent 请求失败（HTTP ${response.status}）。`;
+                try { message = (await response.json()).error || message; } catch {}
+                throw new Error(localizedMessage(message));
+            }
+            if (!response.body) throw new Error(localizedLabel('unsupportedStream'));
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const {value, done} = await reader.read();
+                buffer += decoder.decode(value || new Uint8Array(), {stream: !done});
+                let boundary;
+                while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
+                    const frame = buffer.slice(0, boundary);
+                    const delimiter = buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];
+                    buffer = buffer.slice(boundary + delimiter.length);
+                    handleFrame(frame);
+                }
+                if (done) break;
+            }
+            if (buffer.trim()) handleFrame(buffer);
+            if (!receivedCompletion) throw new Error(localizedLabel('streamInterrupted'));
+        } catch (error) {
+            if (error.message !== 'stream-error') {
+                setAgentProps('agent-status', {
+                    children: localizedMessage(error.message || localizedLabel('requestFailed')),
+                });
+            }
+            setAgentProps('agent-progress', {children: ''});
+            setAgentProps('agent-stream-output', {children: ''});
+        } finally {
+            widget.dataset.streaming = 'false';
+            setAgentProps('agent-send', {loading: false, disabled: false});
+            setAgentProps('agent-prompt', {disabled: false, value: ''});
+            setAgentProps('agent-provider-profile', {disabled: false});
+            input?.focus({preventScroll: true});
+        }
+    }
+
+    document.addEventListener('click', event => {
+        const send = event.target.closest?.('#agent-send');
+        if (!send || !widget || widget.dataset.streaming === 'true') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        sendAgentMessage();
+    }, true);
+
     document.addEventListener('click', event => {
         if (!widget) return;
         if (event.target.closest('#agent-launcher')) setOpen(widget.querySelector('#agent-panel').hidden);
@@ -297,7 +450,7 @@
             const expanded = widget.dataset.expanded !== 'true';
             widget.dataset.expanded = String(expanded);
             const button = widget.querySelector('#agent-expand');
-            button.title = expanded ? '恢复浮窗' : '放大对话';
+            button.title = localizedLabel(expanded ? 'restoreChat' : 'expandChat');
             button.setAttribute('aria-label', button.title);
             button.setAttribute('aria-pressed', String(expanded));
         }

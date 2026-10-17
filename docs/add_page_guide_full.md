@@ -11,6 +11,24 @@ python scripts/scaffold_page.py --module analytics --title 分析中心 --subpag
 python scripts/scaffold_page.py --module analytics --title 分析中心 --subpage 总览:overview:1 --subpage 明细:details:2
 ```
 
+推荐新人使用完整生成模式：
+
+```powershell
+python scripts/scaffold_page.py `
+  --module analytics `
+  --title 分析中心 `
+  --page-type list `
+  --with-i18n `
+  --with-tests `
+  --subpage 总览:overview:1 `
+  --subpage 明细:details:2
+python scripts/check_pages.py
+```
+
+脚手架支持三种页面意图标记：`list`（列表/查询）、`dashboard`（指标/看板）和 `form`（录入/配置）。生成页面会同时导出 `template_type` 和 `template_capabilities`，并把这两个字段写入根节点的 `data-template-*` 属性，供未来看板按模板能力展示；这些元数据不代替业务实现。`--with-i18n` 会生成模块专属翻译主题，并让模板标题、示例标签和筛选区标题通过该主题解析；`--with-tests` 会生成最小页面契约测试。生成的测试是起点，接入真实数据后还应覆盖权限拒绝、空数据、失败状态和关键写操作。
+
+`scripts/check_pages.py` 是提交前的快速检查，验证 `applications.json` 中的自定义页面是否有对应 view/callback、`title`、`access_metas` 和 `render_content`，并检测重复权限。它不替代运行时权限检查和完整测试。
+
 模块名和页面名需为 ASCII Python 标识符；应用模块名不要以 `_` 结尾，该后缀用于内置应用。子页面格式为 `标题:页面名[:排序[:图标]]`。脚手架不会覆盖已存在模块。生成页面包含主题化指标带、搜索/状态筛选、空数据表和明确标识的本地示例记录；筛选回调会重新检查页面权限。业务接入时应替换示例 fixture、接入真实服务端数据，并为写操作单独实现授权、确认和失败状态，再重启 Web 并显式授予角色页面权限。
 
 页面 URL 采用注册模块名和页面名组成的路径，例如 `/analytics/overview`。未知页面返回 404；没有页面权限时返回无权限页面。移除模块后，旧数据库授权只会被忽略/告警，不会自动删除角色数据。
@@ -41,7 +59,7 @@ if not access.has_access('分析中心-导出'):
 
 上例中的 `no_update` 需按回调实际输出设计替换为合适的拒绝响应。对读取、导出、创建、编辑、删除、触发任务等操作，均应检查权限；团队资源还需验证对象所属团队和动作授权。不要信任浏览器提交的任务脚本、团队 ID 或行数据。
 
-新增权限需列在页面的 `access_metas` 中并给出唯一名称。页面访问权限和对象/动作权限是不同层次；调用任务中心等共享服务时应沿用该服务的授权接口。
+新增权限需列在页面的 `access_metas` 中并给出唯一名称。系统管理员会自动获得所有已注册页面权限（包括后续通过脚手架注册的模板页面）；普通角色仍需显式授予权限。页面访问权限和对象/动作权限是不同层次；调用任务中心等共享服务时应沿用该服务的授权接口。
 
 ## 国际化与主题
 

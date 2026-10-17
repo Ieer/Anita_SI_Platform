@@ -7,13 +7,18 @@
         "联启并运行任务": {"en-us": "Start scheduler and run tasks"},
         "联启但保持暂停": {"en-us": "Start scheduler paused"},
         "保存下次启动策略": {"en-us": "Save next-start policy"},
+        "保持设备唤醒": {"en-us": "Keep device awake"},
+        "开启": {"en-us": "On"},
+        "关闭": {"en-us": "Off"},
+        "已开启（仅对当前浏览器生效）": {"en-us": "Enabled (current browser only)"},
+        "已关闭": {"en-us": "Disabled"},
+        "当前浏览器不支持保持设备唤醒": {"en-us": "This browser does not support keeping the device awake"},
         "启用后，下次通过统一启动器启动时会恢复计划和监听任务；已到期任务可能运行。": {
             "en-us": "On the next unified startup, scheduled and listener tasks will resume. Due tasks may run immediately."
         },
         "确认启用任务调度": {"en-us": "Confirm task scheduling"},
         "确认启用": {"en-us": "Confirm and enable"},
         "取消": {"en-us": "Cancel"},
-        "调度服务运行中": {"en-us": "Scheduler running"},
         "调度服务在线，任务保持暂停": {"en-us": "Scheduler online; tasks paused"},
         "调度服务认证失败或未配置 RPC 密钥": {"en-us": "Scheduler authentication failed or RPC secret is missing"},
         "调度服务离线或暂不可达": {"en-us": "Scheduler offline or unreachable"},
@@ -34,7 +39,7 @@
             "en-us": "Query Execution Log"
         },
         "自动滚动": {
-            "en-us": "Auto Roll"
+            "en-us": "Auto-scroll"
         },
         "关闭滚动": {
             "en-us": "Close Roll"
@@ -224,6 +229,435 @@
         },
         "最近执行错误": {
             "en-us": "Most recent execution error"
-        }
+        },
+        "任务中心": {"en-us": "Task Center"},
+        "任务概览": {"en-us": "Task Overview"},
+        "平台任务": {"en-us": "Platform Tasks"},
+        "Windows 任务": {"en-us": "Windows Tasks"},
+        "运行日志": {"en-us": "Run Logs"},
+        "运行记录": {"en-us": "Run History"},
+        "计划": {"en-us": "Schedule"},
+        "实际运行": {"en-us": "Actual Runs"},
+        "任务列表": {"en-us": "Task List"},
+        "未来 24 小时": {"en-us": "Next 24 hours"},
+        "未来 7 天": {"en-us": "Next 7 days"},
+        "未来 30 天": {"en-us": "Next 30 days"},
+        "过去 24 小时": {"en-us": "Previous 24 hours"},
+        "过去 7 天": {"en-us": "Previous 7 days"},
+        "过去 30 天": {"en-us": "Previous 30 days"},
+        "还原当前时间范围": {"en-us": "Reset time range"},
+        "刷新概览": {"en-us": "Refresh overview"},
+        "任务已暂停，暂无计划触发": {"en-us": "Tasks are paused; no scheduled runs"},
+        "此时间范围无计划触发": {"en-us": "No scheduled runs in this time range"},
+        "此时间范围无运行记录": {"en-us": "No run history in this time range"},
+        "结果未知的计划": {"en-us": "Schedule with unknown outcome"},
+        "计划预览": {"en-us": "Schedule preview"},
+        "团队：": {"en-us": "Team: "},
+        "未认领": {"en-us": "Unclaimed"},
+        "预览触发：{count} 次（每任务最多50次）": {
+            "en-us": "Preview: {count} runs (up to 50 per task)"
+        },
+        "首个：": {"en-us": "First: "},
+        "末个：": {"en-us": "Last: "},
+        "结果未知，待核实": {"en-us": "Outcome unknown; verification required"},
+        "真实运行区间": {"en-us": "Actual run interval"},
+        "秒": {"en-us": "s"},
+        "未记录完整运行区间": {"en-us": "Incomplete run interval"},
+        "状态：": {"en-us": "Status: "},
+        "开始": {"en-us": "Started"},
+        "申请": {"en-us": "Requested"},
+        "结束：": {"en-us": "Finished: "},
+        "未记录": {"en-us": "Not recorded"},
+        "时长：": {"en-us": "Duration: "},
+        "Run ID：": {"en-us": "Run ID: "},
+        "运行时间标记": {"en-us": "Run time marker"},
+        "概览暂不可用": {"en-us": "Overview is temporarily unavailable"},
+        "调度服务暂不可用；概览仅包含安全的已认领历史元数据。": {
+            "en-us": "Scheduler service is temporarily unavailable; the overview shows only safe metadata for claimed historical tasks."
+        },
+        "当前页任务": {"en-us": "Tasks on this page"},
+        "在途（本页）": {"en-us": "In progress (this page)"},
+        "未知（本页）": {"en-us": "Unknown (this page)"},
+        "任务 / 运行": {"en-us": "Task / Run"},
+        "团队": {"en-us": "Team"},
+        "时间": {"en-us": "Time"},
+        "状态": {"en-us": "Status"},
+        "预览触发数 · 每任务最多50次": {"en-us": "Preview runs · up to 50 per task"},
+        "失败 / 超时": {"en-us": "Failed / timed out"},
+        "申请 / 在途": {"en-us": "Requested / in progress"},
+        "其他终态": {"en-us": "Other terminal states"},
+        "时间不完整": {"en-us": "Incomplete timing"},
+        "结果未知": {"en-us": "Outcome unknown"},
+        "失败": {"en-us": "Failed"},
+        "超时": {"en-us": "Timed out"},
+        "成功": {"en-us": "Succeeded"},
+        "待提交": {"en-us": "Awaiting submission"},
+        "已提交": {"en-us": "Submitted"},
+        "运行中": {"en-us": "Running"},
+        "未执行 / 已取消": {"en-us": "Not run / canceled"},
+        "已跳过": {"en-us": "Skipped"},
+        "人工确认结束": {"en-us": "Manually confirmed ended"},
+        "原生命令已受理": {"en-us": "Native command accepted"},
+        "手动": {"en-us": "Manual"},
+        "定时": {"en-us": "Scheduled"},
+        "Agent审批": {"en-us": "Agent approval"},
+        "监听": {"en-us": "Listener"},
+        "重试": {"en-us": "Retry"},
+        "旧历史": {"en-us": "Legacy"},
+        "筛选任务 / Run ID": {"en-us": "Filter tasks / Run ID"},
+        "运行状态": {"en-us": "Run status"},
+        "导出原始日志": {"en-us": "Export raw log"},
+        "运行": {"en-us": "Run"},
+        "任务": {"en-us": "Task"},
+        "团队 / 发起人": {"en-us": "Team / Initiator"},
+        "来源": {"en-us": "Source"},
+        "开始时间": {"en-us": "Start time"},
+        "耗时": {"en-us": "Duration"},
+        "结果": {"en-us": "Result"},
+        "详情": {"en-us": "Details"},
+        "运行详情": {"en-us": "Run details"},
+        "查看": {"en-us": "View"},
+        "结果未知。外部核实前不要重跑；提交核实将解除任务护栏。": {
+            "en-us": "Outcome is unknown. Do not rerun before external verification; submitting verification will release the task guard."
+        },
+        "确认运行已结束": {"en-us": "Confirm run has ended"},
+        "确认未执行": {"en-us": "Confirm not run"},
+        "核实依据（必填）": {"en-us": "Verification details (required)"},
+        "提交核实": {"en-us": "Submit verification"},
+        "来源：": {"en-us": "Source: "},
+        "发起人：": {"en-us": "Initiator: "},
+        "复制 Run ID": {"en-us": "Copy Run ID"},
+        "复制运行编号": {"en-us": "Copy run ID"},
+        "打开任务": {"en-us": "Open task"},
+        "暂停滚动": {"en-us": "Pause scrolling"},
+        "自动换行": {"en-us": "Wrap lines"},
+        "不换行": {"en-us": "No wrapping"},
+        "在已读取日志中查找": {"en-us": "Search loaded log"},
+        "等待日志片段…": {"en-us": "Waiting for log data…"},
+        "运行已核实": {"en-us": "Run verified"},
+        "搜索任务名称": {"en-us": "Search task name"},
+        "全部状态": {"en-us": "All statuses"},
+        "已暂停": {"en-us": "Paused"},
+        "状态未知": {"en-us": "Status unknown"},
+        "团队筛选": {"en-us": "Filter by team"},
+        "本机": {"en-us": "Local"},
+        "新建任务": {"en-us": "Create task"},
+        "认领历史任务": {"en-us": "Claim legacy task"},
+        "团队授权": {"en-us": "Team permissions"},
+        "刷新任务": {"en-us": "Refresh tasks"},
+        "触发计划": {"en-us": "Trigger schedule"},
+        "下次运行": {"en-us": "Next run"},
+        "任务定义": {"en-us": "Task definition"},
+        "保存": {"en-us": "Save"},
+        "确认操作": {"en-us": "Confirm action"},
+        "返回": {"en-us": "Back"},
+        "认领并暂停": {"en-us": "Claim and pause"},
+        "团队操作授权": {"en-us": "Team operation permissions"},
+        "保存授权": {"en-us": "Save permissions"},
+        "目标团队": {"en-us": "Destination team"},
+        "人工核实依据": {"en-us": "Manual verification details"},
+        "新建平台任务": {"en-us": "Create platform task"},
+        "确认操作：": {"en-us": "Confirm action: "},
+        "全部团队": {"en-us": "All teams"},
+        "个匹配任务": {"en-us": "matching tasks"},
+        "任务名称": {"en-us": "Task name"},
+        "触发方式": {"en-us": "Trigger type"},
+        "周期": {"en-us": "Interval"},
+        "单次": {"en-us": "One-time"},
+        "时区": {"en-us": "Time zone"},
+        "周期秒数": {"en-us": "Interval (seconds)"},
+        "单次时间": {"en-us": "Run once at"},
+        "执行位置": {"en-us": "Execution location"},
+        "SSH 主机": {"en-us": "SSH host"},
+        "SSH 端口": {"en-us": "SSH port"},
+        "SSH 用户": {"en-us": "SSH user"},
+        "替换密码": {"en-us": "Replace password"},
+        "超时秒数": {"en-us": "Timeout (seconds)"},
+        "脚本类型": {"en-us": "Script type"},
+        "Cron 秒": {"en-us": "Cron second"},
+        "Cron 分": {"en-us": "Cron minute"},
+        "Cron 时": {"en-us": "Cron hour"},
+        "Cron 日": {"en-us": "Cron day"},
+        "Cron 月": {"en-us": "Cron month"},
+        "Cron 周": {"en-us": "Cron weekday"},
+        "脚本": {"en-us": "Script"},
+        "提取 / 通知 / 环境变量 (JSON)": {"en-us": "Extraction / notifications / environment variables (JSON)"},
+        "计划边界 / 监听渠道与关键词 (JSON)": {"en-us": "Schedule boundaries / listener channels and keywords (JSON)"},
+        "预览未来 5 次": {"en-us": "Preview next 5 runs"},
+        "监听事件触发，没有未来时间点。": {"en-us": "Listener events trigger tasks; there are no future timestamps to preview."},
+        "高级配置必须为提取、通知、环境变量组成的JSON对象。": {
+            "en-us": "Advanced configuration must be a JSON object containing extraction, notification, and environment-variable settings."
+        },
+        "计划边界配置无效。": {"en-us": "Schedule boundary configuration is invalid."},
+        "已保存并暂停。核对后请显式恢复。": {"en-us": "Saved and paused. Review the task, then explicitly resume it."},
+        "已认领并暂停。": {"en-us": "Claimed and paused."},
+        "团队成员用户名": {"en-us": "Team member username"},
+        "归属团队": {"en-us": "Owning team"},
+        "Windows 任务服务不可用：": {"en-us": "Windows Task Scheduler service is unavailable: "},
+        "Windows 任务服务不可用：请稍后刷新": {"en-us": "Windows Task Scheduler service is unavailable. Refresh and try again."},
+        "原生任务快照": {"en-us": "Native task snapshot"},
+        "就绪": {"en-us": "Ready"},
+        "就绪（本页）": {"en-us": "Ready (this page)"},
+        "已禁用": {"en-us": "Disabled"},
+        "刷新快照": {"en-us": "Refresh snapshot"},
+        "导出": {"en-us": "Export"},
+        "服务器本机 · Windows 原生执行 · 命令受理不代表运行完成": {
+            "en-us": "Runs on this server · Native Windows execution · Accepted commands are not necessarily complete"
+        },
+        "完整任务路径": {"en-us": "Full task path"},
+        "状态 / LastTaskResult": {"en-us": "Status / LastTaskResult"},
+        "下次触发": {"en-us": "Next trigger"},
+        "服务器账户": {"en-us": "Server account"},
+        "原生并发策略": {"en-us": "Native concurrency policy"},
+        "确认 Windows 操作": {"en-us": "Confirm Windows action"},
+        "认领 Windows 任务": {"en-us": "Claim Windows task"},
+        "Windows 任务已认领。": {"en-us": "Windows task claimed."},
+        "原生调度": {"en-us": "Native scheduler"},
+        "不可用": {"en-us": "Unavailable"},
+        "先认领": {"en-us": "Claim first"},
+        "启动": {"en-us": "Start"},
+        "删除": {"en-us": "Delete"},
+        "核实定义": {"en-us": "Verify definition"},
+        "操作：": {"en-us": "Action: "},
+        "平台请求只代表服务已受理，不代表原生任务已完成。": {
+            "en-us": "The platform request only indicates that it was accepted; it does not mean the native task has completed."
+        },
+        "核实依据": {"en-us": "Verification details"},
+        "操作已受理": {"en-us": "Action accepted"},
+        "选择原生任务": {"en-us": "Select a native task"},
+        "搜索完整任务路径": {"en-us": "Search full task path"},
+        "每": {"en-us": "Every"},
+        "天": {"en-us": "days"},
+        "小时": {"en-us": "hours"},
+        "分钟": {"en-us": "minutes"},
+        "周期单位-周": {"en-us": "wk"},
+        "周期单位-天": {"en-us": "d"},
+        "周期单位-小时": {"en-us": "h"},
+        "周期单位-分钟": {"en-us": "min"},
+        "周期单位-秒": {"en-us": "s"},
+        "暂停": {"en-us": "Pause"},
+        "恢复": {"en-us": "Resume"},
+        "编辑": {"en-us": "Edit"},
+        "日志": {"en-us": "Logs"},
+        "转移团队": {"en-us": "Transfer team"},
+        "未计划": {"en-us": "Not scheduled"},
+        "未知": {"en-us": "Unknown"},
+        "选择旧任务": {"en-us": "Select a legacy task"},
+        "请稍后刷新": {"en-us": "Refresh and try again later"},
+        "确认": {"en-us": "Confirm"},
+        "认领": {"en-us": "Claim"},
+        "发起人": {"en-us": "Initiator"},
+        "团队授权已更新。": {"en-us": "Team permissions updated."},
+        "已返回原运行；同一请求不会重复提交。": {
+            "en-us": "Returned the original run; the same request is not submitted twice."
+        },
+        "同一请求不会重复提交。": {"en-us": "The same request is not submitted twice."},
+        "原生提交结果未知，请人工核实；不会自动重试。": {
+            "en-us": "The native submission outcome is unknown. Verify it manually; it will not be retried automatically."
+        },
+        "Windows已受理启动命令，不代表执行完成。": {
+            "en-us": "Windows accepted the start command; this does not mean execution is complete."
+        },
+        "已返回相同幂等键对应的运行，不会重复提交。": {
+            "en-us": "Returned the run for the same idempotency key; it will not be submitted again."
+        },
+        "提交结果未知，已锁定任务且不会自动重试。": {
+            "en-us": "The submission outcome is unknown. The task is locked and will not be retried automatically."
+        },
+        "调度器已接收请求，不代表运行成功。": {
+            "en-us": "The scheduler accepted the request; this does not mean the run succeeded."
+        },
+        "原生任务已不存在，平台映射已审计关闭。": {
+            "en-us": "The native task no longer exists; the platform mapping was audit-closed."
+        },
+        "已核实原生禁用状态，平台映射保持暂停。": {
+            "en-us": "The native disabled state was verified; the platform mapping remains paused."
+        },
+        "已核实后端定义不存在，平台映射已审计关闭。": {
+            "en-us": "The backend definition was verified as missing; the platform mapping was audit-closed."
+        },
+        "已核实定义并保持暂停，请核对计划后显式恢复。": {
+            "en-us": "The definition was verified and remains paused. Review the schedule before explicitly resuming it."
+        },
+        "任务归属已转移，历史运行团队快照不变，任务保持暂停。": {
+            "en-us": "Task ownership was transferred. Historical run team snapshots are unchanged, and the task remains paused."
+        },
+        "运行已人工核实，审计记录已保存。": {
+            "en-us": "The run was manually verified, and the audit record was saved."
+        },
+        "需要系统管理员权限才能修改全局启动策略": {
+            "en-us": "System administrator privileges are required to change the global startup policy."
+        },
+        "无效的调度启动策略": {"en-us": "Invalid scheduler startup policy."},
+        "配置已被其他管理员修改，请刷新后重试": {
+            "en-us": "Another administrator changed this configuration. Refresh and try again."
+        },
+        "确认已过期，请重新发起保存。": {"en-us": "Confirmation expired. Submit the save action again."},
+        "调度服务未连接，显示已认领任务。": {
+            "en-us": "Scheduler service is disconnected; showing claimed tasks."
+        },
+        "每页数量必须在1至{max}之间。": {"en-us": "Page size must be between 1 and {max}."},
+        "日志数量必须在1至{max}之间。": {"en-us": "Log count must be between 1 and {max}."},
+        "登录身份无效。": {"en-us": "The authenticated identity is invalid."},
+        "账户不存在或已停用。": {"en-us": "The account does not exist or has been disabled."},
+        "没有任务中心页面权限。": {"en-us": "You do not have permission to access the task center."},
+        "没有任务操作页面权限。": {"en-us": "You do not have permission to access task operations."},
+        "团队不存在或已停用。": {"en-us": "The team does not exist or has been disabled."},
+        "团队不存在或无权访问。": {"en-us": "The team does not exist or you do not have access."},
+        "团队未授予此操作。": {"en-us": "This operation has not been granted to the team."},
+        "任务不存在或无权访问。": {"en-us": "The task does not exist or you do not have access."},
+        "运行不存在或无权访问。": {"en-us": "The run does not exist or you do not have access."},
+        "没有任务日志页面权限。": {"en-us": "You do not have permission to access task logs."},
+        "页码无效。": {"en-us": "The page number is invalid."},
+        "任务引擎不匹配。": {"en-us": "The task engine does not match."},
+        "不支持的任务引擎。": {"en-us": "This task engine is not supported."},
+        "任务状态无效。": {"en-us": "The task status is invalid."},
+        "Windows服务不可用，未生成导出。": {
+            "en-us": "Windows Task Scheduler is unavailable; no export was generated."
+        },
+        "导出超过10000条，请先缩小筛选范围。": {
+            "en-us": "The export exceeds 10,000 rows. Narrow the filters and try again."
+        },
+        "任务不存在。": {"en-us": "The task does not exist."},
+        "调度服务不可用，未认领任务。": {
+            "en-us": "The scheduler service is unavailable; the task was not claimed."
+        },
+        "Windows任务不存在。": {"en-us": "The Windows task does not exist."},
+        "任务操作无效。": {"en-us": "The task operation is invalid."},
+        "后端任务已不存在。": {"en-us": "The backend task no longer exists."},
+        "任务详情暂不可用。": {"en-us": "Task details are temporarily unavailable."},
+        "Windows任务定义由原生计划程序维护。": {
+            "en-us": "Windows task definitions are maintained by the native scheduler."
+        },
+        "调度服务不可用，不能编辑任务。": {
+            "en-us": "The scheduler service is unavailable; the task cannot be edited."
+        },
+        "后端定义已变化，请管理员核实后重新认领。": {
+            "en-us": "The backend definition changed. Ask an administrator to verify it before claiming again."
+        },
+        "运行请求键无效。": {"en-us": "The run request key is invalid."},
+        "运行ID无效。": {"en-us": "The run ID is invalid."},
+        "不支持此运行来源。": {"en-us": "This run source is not supported."},
+        "Agent不能提交Windows原生任务。": {
+            "en-us": "Agents cannot submit native Windows tasks."
+        },
+        "Windows任务不存在或已禁用。": {
+            "en-us": "The Windows task does not exist or has been disabled."
+        },
+        "调度服务不可用，未提交运行。": {
+            "en-us": "The scheduler service is unavailable; the run was not submitted."
+        },
+        "任务不存在或已暂停。": {"en-us": "The task does not exist or is paused."},
+        "任务定义已变化，请刷新后重试。": {
+            "en-us": "The task definition changed. Refresh and try again."
+        },
+        "调度器提交回执不匹配。": {"en-us": "The scheduler submission receipt does not match."},
+        "运行状态在调度提交期间发生变化。": {
+            "en-us": "The run status changed while it was being submitted to the scheduler."
+        },
+        "监听任务未认领、已暂停或团队已停用。": {
+            "en-us": "The listener task is unclaimed, paused, or its team is disabled."
+        },
+        "监听定义不可用。": {"en-us": "The listener definition is unavailable."},
+        "监听定义已变化。": {"en-us": "The listener definition changed."},
+        "监听提交结果未知，禁止自动重试。": {
+            "en-us": "The listener submission outcome is unknown; automatic retry is disabled."
+        },
+        "不支持的任务操作。": {"en-us": "This task operation is not supported."},
+        "任务正在运行或状态未知，不能删除。": {
+            "en-us": "The task is running or its status is unknown, so it cannot be deleted."
+        },
+        "任务正在运行或状态未知，不能恢复。": {
+            "en-us": "The task is running or its status is unknown, so it cannot be resumed."
+        },
+        "操作请求键无效。": {"en-us": "The operation request key is invalid."},
+        "任务状态已变化，请刷新后重试。": {
+            "en-us": "The task status changed. Refresh and try again."
+        },
+        "后端任务不存在。": {"en-us": "The backend task does not exist."},
+        "任务操作失败。": {"en-us": "The task operation failed."},
+        "必须提供人工核实依据。": {"en-us": "Manual verification details are required."},
+        "请先核实未决运行。": {"en-us": "Verify the unresolved run first."},
+        "请先在原生计划程序确认任务已禁用，再核实解锁；平台不会自动停用它。": {
+            "en-us": "Confirm the task is disabled in the native scheduler before verifying the unlock; the platform will not disable it automatically."
+        },
+        "后端定义状态已变化，请刷新。": {
+            "en-us": "The backend definition status changed. Refresh the page."
+        },
+        "转移必须提供原因。": {"en-us": "A reason is required to transfer the task."},
+        "日志游标无效。": {"en-us": "The log cursor is invalid."},
+        "团队操作授权列表无效。": {"en-us": "The team operation permission list is invalid."},
+        "团队授权管理员只能委派自身已有的操作，不能提升权限。": {
+            "en-us": "Team permission administrators can delegate only operations they already have; they cannot escalate privileges."
+        },
+        "用户不存在或已停用。": {"en-us": "The user does not exist or has been disabled."},
+        "用户不是该团队成员。": {"en-us": "The user is not a member of this team."},
+        "任务定义无效。": {"en-us": "The task definition is invalid."},
+        "Windows任务定义由Windows任务计划程序维护。": {
+            "en-us": "Windows task definitions are maintained by Windows Task Scheduler."
+        },
+        "任务ID无效。": {"en-us": "The task ID is invalid."},
+        "编辑不能更改稳定任务ID。": {
+            "en-us": "Editing cannot change the stable task ID."
+        },
+        "后端定义已变化，请刷新后重试。": {
+            "en-us": "The backend definition changed. Refresh and try again."
+        },
+        "脚本配置无效。": {"en-us": "The script configuration is invalid."},
+        "不支持的脚本类型。": {"en-us": "This script type is not supported."},
+        "超时秒数必须是1至86400的整数。": {
+            "en-us": "Timeout must be an integer between 1 and 86,400 seconds."
+        },
+        "提取配置必须是字符串或对象组成的列表。": {
+            "en-us": "Extraction settings must be a list of strings or objects."
+        },
+        "通知渠道必须是字符串列表。": {
+            "en-us": "Notification channels must be a list of strings."
+        },
+        "环境变量必须是字符串键和标量值组成的对象。": {
+            "en-us": "Environment variables must be an object with string keys and scalar values."
+        },
+        "监听任务环境变量由监听事件生成，不能配置静态环境变量。": {
+            "en-us": "Listener task environment variables are generated by listener events; static variables cannot be configured."
+        },
+        "监听渠道必须是非空字符串列表。": {
+            "en-us": "Listener channels must be a non-empty list of strings."
+        },
+        "监听关键词不能为空。": {"en-us": "The listener keyword cannot be empty."},
+        "编辑任务不能同时转移团队。": {
+            "en-us": "A task cannot be edited and transferred to another team at the same time."
+        },
+        "任务计划版本已变化，请刷新后重试。": {
+            "en-us": "The task schedule version changed. Refresh and try again."
+        },
+        "监听与时间调度不能直接互换，请新建任务。": {
+            "en-us": "Listener and time-based schedules cannot be converted directly. Create a new task."
+        },
+        "任务正在运行或定义已变化，请刷新后重试。": {
+            "en-us": "The task is running or its definition changed. Refresh and try again."
+        },
+        "调度器保存回执不匹配。": {"en-us": "The scheduler save receipt does not match."},
+        "任务保存结果未知；任务保持暂停，请检查后再操作。": {
+            "en-us": "The task save outcome is unknown; the task remains paused. Check it before taking further action."
+        },
+        "任务计划无效。": {"en-us": "The task schedule is invalid."},
+        "Cron计划包含不支持的字段。": {
+            "en-us": "The Cron schedule contains unsupported fields."
+        },
+        "Interval计划包含不支持的字段。": {
+            "en-us": "The interval schedule contains unsupported fields."
+        },
+        "周期必须为正数。": {"en-us": "The interval must be positive."},
+        "Date计划包含不支持的字段。": {
+            "en-us": "The date schedule contains unsupported fields."
+        },
+        "Date计划必须指定run_date。": {
+            "en-us": "A date schedule must specify run_date."
+        },
+        "触发计划无效。": {"en-us": "The trigger schedule is invalid."},
+        "仅支持 cron、interval 和 date 触发器。": {
+            "en-us": "Only cron, interval, and date triggers are supported."
+        },
+        "预览数量无效。": {"en-us": "The preview count is invalid."}
     }
 }

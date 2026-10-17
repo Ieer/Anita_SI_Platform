@@ -73,6 +73,17 @@ def demo_agent_turn(prompt, menu_access, history=(), allow_log_export=False, acc
     return {'answer': answer, 'trace': [], 'model': DEMO_AGENT_MODEL, 'proposals': []}
 
 
+def demo_agent_turn_events(prompt, menu_access, history=(), allow_log_export=False,
+                           access_provider=None, **kwargs):
+    from common.agent_providers import AgentStreamEvent
+
+    result = demo_agent_turn(prompt, menu_access, history, allow_log_export, access_provider)
+    result.setdefault('remote_conversation_id', None)
+    result.setdefault('provider_state', None)
+    yield AgentStreamEvent('delta', result['answer'])
+    return result
+
+
 def serve(port=8097):
     sys.path.insert(0, str(ROOT / 'src'))
     from peewee import SqliteDatabase
@@ -210,6 +221,7 @@ def serve(port=8097):
             'SMART_AGENT_DEMO_MODE': '1',
         }))
         from common.agent import ModelSettings
+        import common.agent as agent_module
         from dash_callback.pages import agent_widget_c
         from dash_view.framework import agent_widget
 
@@ -218,6 +230,8 @@ def serve(port=8097):
                              'message': '确定性演示剧本；不调用外部模型。'}
         stack.enter_context(patch.object(ModelSettings, 'from_environment', return_value=demo_settings))
         stack.enter_context(patch.object(agent_widget_c, 'run_turn', side_effect=demo_agent_turn))
+        stack.enter_context(patch.object(agent_module, 'run_turn_events',
+                                         side_effect=demo_agent_turn_events))
         stack.enter_context(patch.object(agent_widget_c, 'model_status', return_value=demo_model_status))
         stack.enter_context(patch.object(agent_widget, 'model_status', return_value=demo_model_status))
         stack.enter_context(patch.object(WindowsTasksManager, 'get_scheduled_tasks', side_effect=lambda: native_rows))

@@ -5,7 +5,7 @@ from dash_components import MessageManager
 from database.sql_db.repositories import notify_repository
 import dash
 from uuid import uuid4
-from dash import dcc
+from dash import dcc, html
 import json
 from typing import List
 from common.notify import email_smtp, server_jiang, enterprise_wechat, gewechat
@@ -24,7 +24,7 @@ def get_tabs_items():
     for notify_api in notify_apis: # type: ignore
         api_type = notify_api.api_type
         if api_type not in notify_repository.support_api_types:
-            raise Exception(f'不支持{api_type}类型的消息推送')
+            raise ValueError(t__setting('不支持的通知通道类型：{type}').format(type=api_type))
         api_name = notify_api.api_name
         api_name_label = api_name_value2label(api_name)
         params_json = notify_api.params_json
@@ -44,22 +44,23 @@ def get_tabs_items():
                     'children': fac.AntdSpace(
                         [
                             dcc.Store(id={'type': 'notify-api-server-jiang-api-name', 'name': api_name}, data=api_name),
-                            fac.AntdDivider(api_name_label, innerTextOrientation='left'),
+                            html.H3(api_name_label, className='channel-profile-title'),
                             fac.AntdForm(
                                 [
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'notify-api-server-jiang-SendKey', 'name': api_name}, value=SendKey),
+                                        fac.AntdInput(id={'type': 'notify-api-server-jiang-SendKey', 'name': api_name}, value=SendKey,
+                                                      mode='password', autoComplete='off'),
                                         label='SendKey',
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdSwitch(id={'type': 'notify-api-server-jiang-Noip', 'name': api_name}, checked=Noip),
                                         label='Noip',
-                                        tooltip='是否隐藏IP',
+                                        tooltip=t__setting('是否隐藏IP'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'notify-api-server-jiang-Channel', 'name': api_name}, value=Channel),
                                         label='Channel',
-                                        tooltip='发送通道',
+                                        tooltip=t__setting('发送通道'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(
@@ -67,11 +68,10 @@ def get_tabs_items():
                                             value=Openid,
                                         ),
                                         label='Openid',
-                                        tooltip='只有测试号和企业微信应用消息需要填写',
+                                        tooltip=t__setting('只有测试号和企业微信应用消息需要填写'),
                                     ),
                                 ],
-                                labelCol={'span': 5},
-                                wrapperCol={'span': 20},
+                                layout='vertical',
                             ),
                             fac.AntdSpace(
                                 [
@@ -112,11 +112,12 @@ def get_tabs_items():
                     'children': fac.AntdSpace(
                         [
                             dcc.Store(id={'type': 'notify-api-Gewechat-api-name', 'name': api_name}, data=api_name),
-                            fac.AntdDivider(api_name_label, innerTextOrientation='left'),
+                            html.H3(api_name_label, className='channel-profile-title'),
                             fac.AntdForm(
                                 [
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'notify-api-Gewechat-token', 'name': api_name}, value=token),
+                                        fac.AntdInput(id={'type': 'notify-api-Gewechat-token', 'name': api_name}, value=token,
+                                                      mode='password', autoComplete='off'),
                                         label='token',
                                     ),
                                     fac.AntdFormItem(
@@ -132,8 +133,7 @@ def get_tabs_items():
                                         label='wxid',
                                     ),
                                 ],
-                                labelCol={'span': 5},
-                                wrapperCol={'span': 20},
+                                layout='vertical',
                             ),
                             fac.AntdSpace(
                                 [
@@ -168,16 +168,16 @@ def get_tabs_items():
                     'children': fac.AntdSpace(
                         [
                             dcc.Store(id={'type': 'notify-api-wecom-group-robot-api-name', 'name': api_name}, data=api_name),
-                            fac.AntdDivider(api_name_label, innerTextOrientation='left'),
+                            html.H3(api_name_label, className='channel-profile-title'),
                             fac.AntdForm(
                                 [
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'notify-api-wecom-group-robot-Key', 'name': api_name}, value=Key),
+                                        fac.AntdInput(id={'type': 'notify-api-wecom-group-robot-Key', 'name': api_name}, value=Key,
+                                                      mode='password', autoComplete='off'),
                                         label='Key',
                                     ),
                                 ],
-                                labelCol={'span': 5},
-                                wrapperCol={'span': 20},
+                                layout='vertical',
                             ),
                             fac.AntdSpace(
                                 [
@@ -220,33 +220,33 @@ def get_tabs_items():
                     'children': fac.AntdSpace(
                         [
                             dcc.Store(id={'type': 'notify-api-email-smtp-api-name', 'name': api_name}, data=api_name),
-                            fac.AntdDivider(api_name_label, innerTextOrientation='left'),
+                            html.H3(api_name_label, className='channel-profile-title'),
                             fac.AntdForm(
                                 [
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'notify-api-email-smtp-Host', 'name': api_name}, value=Host),
-                                        label='Host',
+                                        label=t__setting('SMTP 服务器'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'notify-api-email-smtp-Port', 'name': api_name}, value=Port if Port else '465'),
-                                        label='Port',
+                                        label=t__setting('端口'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'notify-api-email-smtp-User', 'name': api_name}, value=User),
-                                        label='User',
+                                        label=t__setting('邮箱账号'),
                                     ),
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'notify-api-email-smtp-Password', 'name': api_name}, value=Password),
-                                        label='Password',
+                                        fac.AntdInput(id={'type': 'notify-api-email-smtp-Password', 'name': api_name}, value=Password,
+                                                      mode='password', autoComplete='new-password'),
+                                        label=t__setting('密码 / 授权码'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'notify-api-email-smtp-Receivers', 'name': api_name}, value=Receivers),
-                                        label='Receivers',
+                                        label=t__setting('接收邮箱'),
                                         tooltip=t__setting('多个邮箱按逗号分割'),
                                     ),
                                 ],
-                                labelCol={'span': 5},
-                                wrapperCol={'span': 20},
+                                layout='vertical',
                             ),
                             fac.AntdSpace(
                                 [
@@ -307,10 +307,10 @@ def add_server_chan_notify_api(nClick, api_name_label):
         return dash.no_update
     for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
-            MessageManager.error(content=api_name_label + t__setting('已存在'))
+            MessageManager.error(content=t__setting('{name}已存在').format(name=api_name_label))
             return dash.no_update
     notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Server酱', enable=False, params_json='{}')
-    MessageManager.success(content=api_name_label + t__setting('创建成功'))
+    MessageManager.success(content=t__setting('{name}创建成功').format(name=api_name_label))
     return [get_tabs_items(), *get_notify_api()]
 
 
@@ -331,10 +331,10 @@ def add_Gewechat_notify_api(nClick, api_name_label):
         return dash.no_update
     for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
-            MessageManager.error(content=api_name_label + t__setting('已存在'))
+            MessageManager.error(content=t__setting('{name}已存在').format(name=api_name_label))
             return dash.no_update
     notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='Gewechat', enable=False, params_json='{}')
-    MessageManager.success(content=api_name_label + t__setting('创建成功'))
+    MessageManager.success(content=t__setting('{name}创建成功').format(name=api_name_label))
     return [get_tabs_items(), *get_notify_api()]
 
 
@@ -355,10 +355,10 @@ def add_wecom_group_robot_notify_api(nClick, api_name_label):
         return dash.no_update
     for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
-            MessageManager.error(content=api_name_label + t__setting('已存在'))
+            MessageManager.error(content=t__setting('{name}已存在').format(name=api_name_label))
             return dash.no_update
     notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='企业微信群机器人', enable=False, params_json='{}')
-    MessageManager.success(content=api_name_label + t__setting('创建成功'))
+    MessageManager.success(content=t__setting('{name}创建成功').format(name=api_name_label))
     return [get_tabs_items(), *get_notify_api()]
 
 
@@ -379,10 +379,10 @@ def add_email_smtp_notify_api(nClick, api_name_label):
         return dash.no_update
     for i in notify_repository.get_notify_api_by_name(api_name=None):
         if api_name_value2label(i.api_name) == api_name_label:
-            MessageManager.error(content=api_name_label + t__setting('已存在'))
+            MessageManager.error(content=t__setting('{name}已存在').format(name=api_name_label))
             return dash.no_update
     notify_repository.insert_notify_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件SMTP协议', enable=False, params_json='{}')
-    MessageManager.success(content=api_name_label + t__setting('创建成功'))
+    MessageManager.success(content=t__setting('{name}创建成功').format(name=api_name_label))
     return [get_tabs_items(), *get_notify_api()]
 
 
@@ -430,9 +430,9 @@ def save_server_jiang_api(nClick, SendKey, Noip, Channel, Openid, api_name):
     is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
     notify_repository.delete_notify_api_by_name(api_name=api_name)
     if notify_repository.insert_notify_api(api_name=api_name, api_type='Server酱', enable=is_enabled, params_json=json.dumps(values)):
-        MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
+        MessageManager.success(content=t__setting('{name}配置保存成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
+        MessageManager.error(content=t__setting('{name}配置保存失败').format(name=api_name_label))
     return dash.no_update
 
 
@@ -519,9 +519,9 @@ def save_Gewechat_api(nClick, token, app_id, base_url, wxid, api_name):
     is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
     notify_repository.delete_notify_api_by_name(api_name=api_name)
     if notify_repository.insert_notify_api(api_name=api_name, api_type='Gewechat', enable=is_enabled, params_json=json.dumps(values)):
-        MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
+        MessageManager.success(content=t__setting('{name}配置保存成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
+        MessageManager.error(content=t__setting('{name}配置保存失败').format(name=api_name_label))
     return dash.no_update
 
 
@@ -541,9 +541,9 @@ def save_wecom_group_robot_api(nClick, Key, api_name):
     is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
     notify_repository.delete_notify_api_by_name(api_name=api_name)
     if notify_repository.insert_notify_api(api_name=api_name, api_type='企业微信群机器人', enable=is_enabled, params_json=json.dumps(values)):
-        MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
+        MessageManager.success(content=t__setting('{name}配置保存成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
+        MessageManager.error(content=t__setting('{name}配置保存失败').format(name=api_name_label))
     return dash.no_update
 
 
@@ -587,9 +587,9 @@ def save_email_smtp_api(nClick, Host, Port, User, Password, Receivers, api_name)
     is_enabled = notify_repository.get_notify_api_by_name(api_name=api_name).enable
     notify_repository.delete_notify_api_by_name(api_name=api_name)
     if notify_repository.insert_notify_api(api_name=api_name, api_type='邮件SMTP协议', enable=is_enabled, params_json=json.dumps(values)):
-        MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
+        MessageManager.success(content=t__setting('{name}配置保存成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
+        MessageManager.error(content=t__setting('{name}配置保存失败').format(name=api_name_label))
     return dash.no_update
 
 
@@ -637,7 +637,7 @@ def delete_notify_channel(clickedContextMenu):
     api_name = clickedContextMenu['tabKey']
     api_name_label = api_name_value2label(api_name)
     if notify_repository.delete_notify_api_by_name(api_name=api_name):
-        MessageManager.success(content=api_name_label + t__setting('删除成功'))
+        MessageManager.success(content=t__setting('{name}删除成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('删除失败'))
+        MessageManager.error(content=t__setting('{name}删除失败').format(name=api_name_label))
     return [get_tabs_items(), *get_notify_api()]

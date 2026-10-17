@@ -5,7 +5,7 @@ from dash_components import MessageManager
 from database.sql_db.repositories import listen_repository
 import dash
 from uuid import uuid4
-from dash import dcc
+from dash import dcc, html
 import json
 from typing import List
 from common.listen import email_pop3
@@ -24,7 +24,7 @@ def get_tabs_items():
     for listen_api in listen_apis:
         api_type = listen_api.api_type
         if api_type not in listen_repository.support_api_types:
-            raise Exception(f'不支持{api_type}类型的消息监听')
+            raise ValueError(t__setting('不支持的监听通道类型：{type}').format(type=api_type))
         api_name = listen_api.api_name
         api_name_label = api_name_value2label(api_name)
         params_json = listen_api.params_json
@@ -48,28 +48,28 @@ def get_tabs_items():
                     'children': fac.AntdSpace(
                         [
                             dcc.Store(id={'type': 'listen-api-pop3-api-name', 'name': api_name}, data=api_name),
-                            fac.AntdDivider(api_name_label, innerTextOrientation='left'),
+                            html.H3(api_name_label, className='channel-profile-title'),
                             fac.AntdForm(
                                 [
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'listen-api-pop3-pop3-server', 'name': api_name}, value=pop3_server),
-                                        label='pop3-server',
+                                        label=t__setting('POP3 服务器'),
                                     ),
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'listen-api-pop3-port', 'name': api_name}, value=port if port else '993'),
-                                        label='port',
+                                        fac.AntdInput(id={'type': 'listen-api-pop3-port', 'name': api_name}, value=port if port else '995'),
+                                        label=t__setting('端口'),
                                     ),
                                     fac.AntdFormItem(
                                         fac.AntdInput(id={'type': 'listen-api-pop3-email-account', 'name': api_name}, value=email_account),
-                                        label='email-account',
+                                        label=t__setting('邮箱账号'),
                                     ),
                                     fac.AntdFormItem(
-                                        fac.AntdInput(id={'type': 'listen-api-pop3-password', 'name': api_name}, value=password),
-                                        label='password',
+                                        fac.AntdInput(id={'type': 'listen-api-pop3-password', 'name': api_name}, value=password,
+                                                      mode='password', autoComplete='new-password'),
+                                        label=t__setting('密码 / 授权码'),
                                     ),
                                 ],
-                                labelCol={'span': 5},
-                                wrapperCol={'span': 20},
+                                layout='vertical',
                             ),
                             fac.AntdSpace(
                                 [
@@ -130,10 +130,10 @@ def add_server_pop3_listen_api(nClick, api_name_label):
         return dash.no_update
     for i in listen_repository.get_listen_api_by_name(api_name=None): # type: ignore
         if api_name_value2label(i.api_name) == api_name_label:
-            MessageManager.error(content=api_name_label + t__setting('已存在'))
+            MessageManager.error(content=t__setting('{name}已存在').format(name=api_name_label))
             return dash.no_update
     listen_repository.insert_listen_api(api_name=api_name_label + f'\0{uuid4().hex[:12]}', api_type='邮件POP3协议', enable=False, params_json='{}')
-    MessageManager.success(content=api_name_label + t__setting('创建成功'))
+    MessageManager.success(content=t__setting('{name}创建成功').format(name=api_name_label))
     return [get_tabs_items(), *get_listen_api()]
 
 @app.callback(
@@ -180,9 +180,9 @@ def save_email_pop3_api(nClick, pop3_server, port, email_account, password, api_
     is_enabled = listen_repository.get_listen_api_by_name(api_name=api_name).enable
     listen_repository.delete_listen_api_by_name(api_name=api_name)
     if listen_repository.insert_listen_api(api_name=api_name, api_type='邮件POP3协议', enable=is_enabled, params_json=json.dumps(values)):
-        MessageManager.success(content=api_name_label + t__setting('配置保存成功'))
+        MessageManager.success(content=t__setting('{name}配置保存成功').format(name=api_name_label))
     else:
-        MessageManager.error(content=api_name_label + t__setting('配置保存失败'))
+        MessageManager.error(content=t__setting('{name}配置保存失败').format(name=api_name_label))
     return dash.no_update
 
 
@@ -217,5 +217,3 @@ def test_Gewechat_api(nClicks, pop3_server, port, email_account, password):
     else:
         MessageManager.success(content=t__setting('POP3测试接收成功'))
     return dash.no_update
-
-

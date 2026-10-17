@@ -4,6 +4,7 @@ import feffery_antd_components as fac
 from common import task_center
 from common.utilities.util_menu_access import get_menu_access
 from server import app
+from .i18n import task_label as t_task, task_message, task_source_label, task_status_label, task_timestamp
 
 
 class _PageAccess:
@@ -29,12 +30,12 @@ def load_runs(access, keyword='', status='', page=1, page_size=20, task_id=None,
     rows = [{
         'key': run['run_id'], 'run_id': run['run_id'], 'task_id': run['task_id'],
         'name': run['name'], 'owner': f"{run.get('group_name') or '—'} · {run.get('actor') or '—'}",
-        'source': task_center.SOURCE_LABELS.get(run.get('source'), run.get('source') or '—'),
-        'started_at': task_center.display_timestamp(run.get('started_at') or run.get('requested_at')),
+        'source': task_source_label(run.get('source')),
+        'started_at': task_timestamp(run.get('started_at') or run.get('requested_at')),
         'duration_label': f"{run['duration']}s" if run.get('duration') is not None else '—',
-        'state': run.get('status') or '未知',
-        'state_label': task_center.RUN_STATUS_LABELS.get(run.get('status'), run.get('status')),
-        'detail': [{'content': '查看', 'type': 'link', 'custom': f"detail:{run['run_id']}"}],
+        'state': run.get('status') or 'unknown',
+        'state_label': task_status_label(run.get('status')),
+        'detail': [{'content': t_task('查看'), 'type': 'link', 'custom': f"detail:{run['run_id']}"}],
     } for run in values]
     return rows, result.get('total', 0)
 
@@ -60,39 +61,39 @@ def refresh_runs(_init, _refresh, keyword, status, page, page_size, query):
                                 query.get('task_id'), query.get('run_id'))
         return rows, total, None
     except Exception as exc:
-        return [], 0, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+        return [], 0, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 def _detail(row, run_id, text='', active=False, can_resolve=False):
     resolve = []
     if row.get('state') == 'unknown' and can_resolve:
         resolve = [
-            fac.AntdAlert(message='结果未知。外部核实前不要重跑；提交核实将解除任务护栏。',
+            fac.AntdAlert(message=t_task('结果未知。外部核实前不要重跑；提交核实将解除任务护栏。'),
                           type='warning', showIcon=True),
             fac.AntdSelect(id='tc-log-resolve-outcome', value='ended', options=[
-                {'label': '确认运行已结束', 'value': 'ended'},
-                {'label': '确认未执行', 'value': 'not_executed'}], style={'width': '100%'}),
-            fac.AntdInput(id='tc-log-resolve-reason', mode='text-area', placeholder='核实依据（必填）',
+                {'label': t_task('确认运行已结束'), 'value': 'ended'},
+                {'label': t_task('确认未执行'), 'value': 'not_executed'}], style={'width': '100%'}),
+            fac.AntdInput(id='tc-log-resolve-reason', mode='text-area', placeholder=t_task('核实依据（必填）'),
                           autoSize={'minRows': 2, 'maxRows': 5}),
-            fac.AntdButton('提交核实', id='tc-log-resolve', type='primary', danger=True),
+            fac.AntdButton(t_task('提交核实'), id='tc-log-resolve', type='primary', danger=True),
         ]
     return html.Div([
         html.Div([html.Span(run_id, className='tc-run-id'), html.Span(row.get('state_label', row.get('state', '')))], className='tc-log-tools'),
-        html.Div([html.Span(f"任务：{row.get('name', '—')}"),
-                  html.Span(f"来源：{row.get('source', '—')}"),
-                  html.Span(f"发起人：{row.get('owner', '—')}")], className='tc-log-tools'),
+        html.Div([html.Span(f"{t_task('任务')}：{row.get('name', '—')}"),
+                  html.Span(f"{t_task('来源')}：{row.get('source', '—')}"),
+                  html.Span(f"{t_task('发起人')}：{row.get('owner', '—')}")], className='tc-log-tools'),
         html.Div([
-            html.Button('复制 Run ID', title='复制运行编号', **{'data-tc-copy': run_id}),
-            fac.AntdButton('打开任务', id='tc-log-open-task', icon=fac.AntdIcon(icon='antd-link')),
-            fac.AntdSwitch(id='tc-log-auto-scroll', checked=True, checkedChildren='自动滚动',
-                           unCheckedChildren='暂停滚动'),
-            fac.AntdSwitch(id='tc-log-wrap', checked=True, checkedChildren='自动换行',
-                           unCheckedChildren='不换行'),
-            fac.AntdInput(id='tc-log-text-search', placeholder='在已读取日志中查找', allowClear=True,
+            html.Button(t_task('复制 Run ID'), title=t_task('复制运行编号'), **{'data-tc-copy': run_id}),
+            fac.AntdButton(t_task('打开任务'), id='tc-log-open-task', icon=fac.AntdIcon(icon='antd-link')),
+            fac.AntdSwitch(id='tc-log-auto-scroll', checked=True, checkedChildren=t_task('自动滚动'),
+                           unCheckedChildren=t_task('暂停滚动')),
+            fac.AntdSwitch(id='tc-log-wrap', checked=True, checkedChildren=t_task('自动换行'),
+                           unCheckedChildren=t_task('不换行')),
+            fac.AntdInput(id='tc-log-text-search', placeholder=t_task('在已读取日志中查找'), allowClear=True,
                           prefix=fac.AntdIcon(icon='antd-search'), style={'width': 'min(260px, 100%)'}),
         ], className='tc-log-tools'),
         html.Div(resolve, className='tc-log-tools'),
-        html.Pre(text or '等待日志片段…', id='tc-log-output', className='tc-log-output'),
+        html.Pre(text if text else t_task('等待日志片段…'), id='tc-log-output', className='tc-log-output'),
         html.Div(id='tc-log-detail-notice'),
         html.Div(id='tc-log-active', **{'data-active': str(bool(active)).lower()}, style={'display': 'none'}),
     ], **{'data-task-id': row.get('task_id') or '', 'data-run-id': run_id})
@@ -139,7 +140,7 @@ def poll_log(_tick, selected, visible, cursor, buffer):
             dash.set_props('tc-log-active', {'data-active': 'false'})
         return combined, result.get('cursor', cursor or 0), complete
     except Exception as exc:
-        dash.set_props('tc-log-detail-notice', {'children': fac.AntdAlert(message=str(exc), type='error')})
+        dash.set_props('tc-log-detail-notice', {'children': fac.AntdAlert(message=task_message(str(exc)), type='error')})
         return dash.no_update, cursor, True
 
 
@@ -152,7 +153,7 @@ def render_log(buffer, search, wrap, auto_scroll):
     text = buffer or ''
     if search:
         text = '\n'.join(line for line in text.splitlines() if search.casefold() in line.casefold())
-    return text or '等待日志片段…', {
+    return text if text else t_task('等待日志片段…'), {
         'whiteSpace': 'pre-wrap' if wrap else 'pre',
         'overflowWrap': 'anywhere' if wrap else 'normal',
     }
@@ -192,9 +193,9 @@ def resolve_unknown(_click, selected, outcome, reason):
         result = task_center.resolve_run(_access(), selected['run_id'], outcome, reason or '')
         dash.set_props('tc-log-refresh', {'disabled': True})
         dash.set_props('tc-log-active', {'data-active': 'false'})
-        return fac.AntdAlert(message=result.get('message', '运行已核实'), type='success', showIcon=True)
+        return fac.AntdAlert(message=task_message(result.get('message') or '运行已核实'), type='success', showIcon=True)
     except Exception as exc:
-        return fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+        return fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 @app.callback(

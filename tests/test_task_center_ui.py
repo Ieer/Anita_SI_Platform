@@ -68,6 +68,52 @@ def test_hackathon_demo_story_and_synthetic_monitor():
 
 
 @pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
+def test_page_agent_uses_local_bundle_and_same_origin_model_proxy():
+    from playwright.sync_api import expect, sync_playwright
+
+    url = os.environ.get('PLATFORM_TASK_DEMO_URL', 'http://127.0.0.1:8097')
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={'width': 1440, 'height': 960})
+        requests = []
+        errors = []
+        page.on('request', lambda request: requests.append(request.url))
+        page.on('pageerror', lambda error: errors.append(str(error)))
+        page.goto(url + '/demo')
+        page.locator('#agent-launcher').click()
+        page.locator('#page-agent-launcher').click()
+        page.wait_for_function(
+            "window.pageAgent?.config?.baseURL === window.location.origin + '/page_agent_llm/v1'",
+            timeout=30000,
+        )
+        expect(page.locator('#page-agent-status')).to_contain_text('已连接平台内网模型')
+        config = page.evaluate("""() => ({
+            model: window.pageAgent.config.model,
+            baseURL: window.pageAgent.config.baseURL,
+            apiKey: window.pageAgent.config.apiKey,
+        })""")
+        assert config == {
+            'model': 'platform-default',
+            'baseURL': url + '/page_agent_llm/v1',
+            'apiKey': 'page-agent-browser',
+        }
+        local_assets = [item for item in requests if '/assets/vendor/page-agent/' in item]
+        public_requests = [
+            item for item in requests
+            if any(host in item for host in ('registry.npm', 'cdn.jsdelivr', 'page-ag-testing-'))
+        ]
+        assert local_assets and 'autoInit=false' in local_assets[-1]
+        assert not public_requests
+        assert not errors, errors
+
+        page.locator('#agent-widget').evaluate('(node) => node.remove()')
+        page.wait_for_function("window.pageAgent == null")
+        assert page.locator('page-agent').count() == 0
+        assert not errors, errors
+        browser.close()
+
+
+@pytest.mark.skipif(os.environ.get('PLATFORM_TASK_UI_PROBE') != '1', reason='opt-in isolated demo browser')
 def test_gantt_readability():
     from playwright.sync_api import sync_playwright
 

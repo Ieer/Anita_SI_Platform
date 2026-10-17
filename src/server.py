@@ -9,6 +9,7 @@ from common.constant import HttpStatusConstant
 from datetime import datetime, timedelta
 import time
 import threading
+import json
 from i18n import t__other
 
 
@@ -46,6 +47,8 @@ app.title = ShowConf.WEB_TITLE
 server = app.server
 _task_sse_lock = threading.Lock()
 _task_sse_connections = {}
+_agent_stream_slots = threading.BoundedSemaphore(16)
+_page_agent_slots = threading.BoundedSemaphore(8)
 
 
 @server.before_request
@@ -142,6 +145,251 @@ def task_log_sse():
                     headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
     response.call_on_close(release)
     return response
+
+
+@server.route('/agent_stream', methods=['POST'])
+def agent_stream():
+    from flask import stream_with_context
+    from urllib.parse import urlsplit
+    from common.agent import AgentError, ModelSettings, run_turn_events
+    from common.utilities.util_menu_access import get_menu_access
+    from database.sql_db.repositories import agent_provider_repository, agent_repository
+
+    origin = request.headers.get('Origin')
+    if request.headers.get('Sec-Fetch-Site') == 'cross-site' or (
+            origin and urlsplit(origin).netloc != request.host):
+        return jsonify({'error': '跨站请求已拒绝。'}), 403
+    try:
+        payload = request.get_json()
+    except Exception:
+        return jsonify({'error': '请求必须是有效 JSON。'}), 400
+    if (not isinstance(payload, dict)
+            or not {'conversation_id', 'prompt', 'allow_log_export'} <= set(payload)
+            or set(payload) - {'conversation_id', 'prompt', 'allow_log_export', 'profile_id'}
+            or not isinstance(payload.get('conversation_id'), str)
+            or len(payload['conversation_id']) != 32
+            or not isinstance(payload.get('prompt'), str)
+            or not isinstance(payload.get('allow_log_export'), bool)
+            or ('profile_id' in payload and payload['profile_id'] is not None
+                and (not isinstance(payload['profile_id'], str) or len(payload['profile_id']) > 32))):
+        return jsonify({'error': '对话请求格式无效。'}), 400
+    access = get_menu_access()
+    if not access.has_access('工作台-页面'):
+        return jsonify({'error': '没有工作台权限。'}), 403
+    if not _agent_stream_slots.acquire(blocking=False):
+        return jsonify({'error': '对话服务繁忙，请稍后重试。'}), 429
+
+    conversation_id = payload['conversation_id']
+    try:
+        profile_id = payload.get('profile_id')
+        if profile_id is None:
+            profile_id = agent_provider_repository.get_conversation_profile(
+                access.user_name, conversation_id)
+        agent_provider_repository.set_conversation_profile(
+            access.user_name, conversation_id, profile_id)
+        settings = (agent_provider_repository.resolve_profile_settings(profile_id)
+                    if profile_id and profile_id != 'environment'
+                    else ModelSettings.from_environment())
+        remote_id = agent_repository.get_remote_session(
+            access.user_name, conversation_id, settings.remote_session_key)
+        turn_id, history = agent_repository.begin_turn(
+            access.user_name, conversation_id, payload['prompt'])
+    except AgentError as error:
+        _agent_stream_slots.release()
+        return jsonify({'error': str(error)}), 400
+    except Exception:
+        _agent_stream_slots.release()
+        logger.exception('Could not initialize Agent stream.')
+        return jsonify({'error': '对话会话不可用，请刷新后重试。'}), 503
+
+    def encode_event(event_name, data):
+        return f'event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
+
+    @stream_with_context
+    def generate():
+        completed = False
+        try:
+            yield encode_event('status', {'state': 'started'})
+            provider_state = agent_repository.get_provider_state(
+                access.user_name, conversation_id, settings.remote_session_key)
+            events = run_turn_events(
+                payload['prompt'], access, history,
+                allow_log_export=payload['allow_log_export'],
+                access_provider=get_menu_access,
+                remote_conversation_id=remote_id,
+                streaming=True,
+                profile_id=profile_id,
+                provider_state=provider_state,
+            )
+            while True:
+                try:
+                    event = next(events)
+                except StopIteration as result:
+                    turn_result = result.value
+                    current_access = get_menu_access()
+                    if (current_access.user_name != access.user_name
+                            or not current_access.has_access('工作台-页面')):
+                        raise AgentError('访问权限已变更，请重新登录。')
+                    agent_repository.set_remote_session(
+                        access.user_name, conversation_id, settings.remote_session_key,
+                        turn_result['remote_conversation_id'])
+                    agent_repository.finish_turn(
+                        access.user_name, conversation_id, turn_id, turn_result['answer'],
+                        turn_result['trace'], turn_result['model'], proposals=turn_result['proposals'],
+                        provider_id=settings.remote_session_key,
+                        provider_state=turn_result.get('provider_state'))
+                    completed = True
+                    yield encode_event('completed', {
+                        'conversation_id': conversation_id,
+                        'remote_conversation_id': turn_result['remote_conversation_id'],
+                    })
+                    return
+                if event.type not in {'delta', 'status'}:
+                    raise AgentError('Agent Provider 返回了不支持的事件。')
+                yield encode_event(event.type, {'text': event.text})
+        except GeneratorExit:
+            raise
+        except AgentError as error:
+            if not completed:
+                try:
+                    agent_repository.finish_turn(
+                        access.user_name, conversation_id, turn_id, str(error), failed=True)
+                    completed = True
+                except Exception:
+                    logger.exception('Could not persist Agent stream failure.')
+            yield encode_event('error', {'message': str(error)})
+        except Exception:
+            logger.exception('Agent stream failed.')
+            if not completed:
+                try:
+                    agent_repository.finish_turn(
+                        access.user_name, conversation_id, turn_id,
+                        '请求未完成，请检查服务连接后重试。', failed=True)
+                    completed = True
+                except Exception:
+                    logger.exception('Could not persist Agent stream failure.')
+            yield encode_event('error', {'message': '请求未完成，请检查服务连接后重试。'})
+        finally:
+            if not completed:
+                try:
+                    agent_repository.finish_turn(
+                        access.user_name, conversation_id, turn_id,
+                        '对话流已中断，请确认状态后再继续。', failed=True)
+                except Exception:
+                    logger.exception('Could not release interrupted Agent turn.')
+            _agent_stream_slots.release()
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
+
+
+def _page_agent_access():
+    from common.utilities.util_jwt import AccessFailType, jwt_decode_rt_type
+    from common.utilities.util_menu_access import MenuAccess
+
+    cookie = request.cookies.get('Authorization', '')
+    parts = cookie.replace('"', '').split(' ', 1)
+    if len(parts) != 2 or parts[0] != 'Bearer':
+        return None
+    claims = jwt_decode_rt_type(parts[1], verify_exp=True)
+    if isinstance(claims, AccessFailType) or not isinstance(claims, dict):
+        return None
+    access = MenuAccess(claims.get('user_name', ''))
+    return access if access.has_access('工作台-页面') else None
+
+
+@server.route('/page_agent_llm/v1/chat/completions', methods=['POST'])
+def page_agent_chat_completions():
+    from urllib.parse import urlsplit
+    import requests
+
+    from common.agent import AgentError, ModelSettings
+    from database.sql_db.repositories import agent_provider_repository
+
+    origin = request.headers.get('Origin')
+    if request.headers.get('Sec-Fetch-Site') == 'cross-site' or (
+            origin and urlsplit(origin).netloc != request.host):
+        return jsonify({'error': {'message': '跨站请求已拒绝。'}}), 403
+    if request.headers.get('Authorization') != 'Bearer page-agent-browser':
+        return jsonify({'error': {'message': '页面助手客户端标识无效。'}}), 401
+    try:
+        access = _page_agent_access()
+    except Exception:
+        logger.exception('Could not validate page assistant access.')
+        return jsonify({'error': {'message': '页面助手登录状态无效。'}}), 401
+    if access is None:
+        return jsonify({'error': {'message': '没有工作台权限。'}}), 403
+    if request.content_length is not None and request.content_length > 512000:
+        return jsonify({'error': {'message': '页面助手请求过大。'}}), 413
+    payload = request.get_json(silent=True)
+    if (not isinstance(payload, dict)
+            or not isinstance(payload.get('messages'), list)
+            or not 1 <= len(payload['messages']) <= 100
+            or not isinstance(payload.get('stream', False), bool)):
+        return jsonify({'error': {'message': '页面助手模型请求格式无效。'}}), 400
+    if not _page_agent_slots.acquire(blocking=False):
+        return jsonify({'error': {'message': '页面助手模型服务繁忙，请稍后重试。'}}), 429
+    try:
+        profile_id = agent_provider_repository.default_profile_id()
+        settings = (agent_provider_repository.resolve_profile_settings(profile_id)
+                    if profile_id and profile_id != 'environment'
+                    else ModelSettings.from_environment())
+        if settings.provider != 'openai_compatible':
+            raise AgentError('页面助手需要 OpenAI 兼容 Provider。')
+        upstream_payload = dict(payload)
+        upstream_payload['model'] = settings.model
+        upstream_payload['n'] = 1
+        if isinstance(upstream_payload.get('max_tokens'), int):
+            upstream_payload['max_tokens'] = min(max(upstream_payload['max_tokens'], 1), 4000)
+        upstream = requests.post(
+            settings.base_url.rstrip('/') + '/chat/completions',
+            headers={
+                'Authorization': f'Bearer {settings.api_key}',
+                'Content-Type': 'application/json',
+            },
+            json=upstream_payload,
+            stream=payload.get('stream', False),
+            timeout=(10, 120),
+        )
+    except AgentError as error:
+        _page_agent_slots.release()
+        return jsonify({'error': {'message': str(error)}}), 503
+    except requests.RequestException:
+        _page_agent_slots.release()
+        logger.exception('Page assistant model request failed.')
+        return jsonify({'error': {'message': '页面助手模型请求失败或超时。'}}), 502
+    except Exception:
+        _page_agent_slots.release()
+        logger.exception('Could not initialize page assistant model request.')
+        return jsonify({'error': {'message': '页面助手模型配置不可用。'}}), 503
+
+    if not 200 <= upstream.status_code < 300:
+        status = upstream.status_code
+        upstream.close()
+        _page_agent_slots.release()
+        logger.warning('Page assistant upstream returned HTTP %s.', status)
+        return jsonify({'error': {'message': f'页面助手模型返回 HTTP {status}。'}}), 502
+
+    content_type = upstream.headers.get('Content-Type', 'application/json')
+    if not payload.get('stream', False):
+        try:
+            body = upstream.content
+        finally:
+            upstream.close()
+            _page_agent_slots.release()
+        return Response(body, content_type=content_type, headers={'Cache-Control': 'no-store'})
+
+    def generate():
+        try:
+            for chunk in upstream.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+            _page_agent_slots.release()
+
+    return Response(generate(), content_type=content_type,
+                    headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
 
 
 

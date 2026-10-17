@@ -2,7 +2,7 @@ import os
 from functools import partial
 
 from feffery_dash_utils.i18n_utils import Translator
-from flask import request
+from flask import has_request_context, request
 
 # 动态路径解决  2025/09/24
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -11,7 +11,7 @@ LANGUAGE_COOKIE_NAME = 'dash-i18n'
 
 
 def get_current_locale():
-    locale = request.cookies.get(LANGUAGE_COOKIE_NAME)
+    locale = request.cookies.get(LANGUAGE_COOKIE_NAME) if has_request_context() else None
     if locale in translator.available_locales:
         return locale
     return translator.root_locale

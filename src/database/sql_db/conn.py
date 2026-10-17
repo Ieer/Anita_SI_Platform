@@ -47,7 +47,10 @@ def create_rds_table():
     from .entity.table_notify_api import SysNotifyApi
     from .entity.table_listen_api import SysListenApi
     from .entity.table_listen_task import ApschedulerJobsActiveListen, ApschedulerListenCheckpoint
-    from .entity.table_agent import AgentAction, AgentConversation, AgentMessage
+    from .entity.table_agent import (
+        AgentAction, AgentConversation, AgentConversationProfile, AgentMessage,
+        AgentProviderOptions, AgentProviderProfile, AgentProviderState, AgentRemoteSession,
+    )
     from .entity.table_task_center import MODELS as TASK_CENTER_MODELS
 
     db_instance.create_tables(
@@ -71,6 +74,11 @@ def create_rds_table():
             ApschedulerJobsActiveListen,
             ApschedulerListenCheckpoint,
             AgentConversation,
+            AgentConversationProfile,
+            AgentProviderProfile,
+            AgentProviderOptions,
+            AgentProviderState,
+            AgentRemoteSession,
             AgentMessage,
             AgentAction,
             *TASK_CENTER_MODELS,

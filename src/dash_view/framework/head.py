@@ -54,8 +54,8 @@ def render_head_content(menu_access: MenuAccess):
             fac.AntdButton(
                 fac.AntdIcon(id='btn-menu-collapse-sider-menu-icon', icon='antd-menu-fold'),
                 id='btn-menu-collapse-sider-menu',
-                title='展开或折叠主导航',
-                **{'aria-label': '展开或折叠主导航'},
+                title=t__default('展开或折叠主导航'),
+                **{'aria-label': t__default('展开或折叠主导航')},
                 type='text',
                 shape='circle',
                 size='large',

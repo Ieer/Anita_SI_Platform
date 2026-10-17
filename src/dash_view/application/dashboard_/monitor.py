@@ -25,6 +25,15 @@ def detail_section(label, identifier):
 
 def render_content(menu_access: MenuAccess, **kwargs):
     return html.Div([
+        html.Div(
+            className='page-agent-context',
+            hidden=True,
+            **{
+                'data-page': 'monitor',
+                'data-capabilities': 'read_metrics,open_task_center',
+                'data-agent-policy': 'no_execute',
+            },
+        ),
         dcc.Interval(id='monitor-intervals', interval=5000),
         fuc.FefferyTimeout(id='monitor-intervals-init', delay=0),
         dcc.Store(id='monitor-history', data=[]),

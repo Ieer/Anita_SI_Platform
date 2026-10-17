@@ -16,6 +16,17 @@ from flask import request
 login_attempts = Cache(maxsize=10000, ttl=300)
 login_attempt_lock = Lock()
 
+app.clientside_callback(
+    """(loading, otpDisabled, labels) => {
+        if (!labels) return '';
+        return loading ? labels.password : otpDisabled ? labels.otp : '';
+    }""",
+    Output('login-status', 'children'),
+    Input('login-submit', 'loading'),
+    Input('login-otp', 'disabled'),
+    Input('login-progress-labels', 'data'),
+)
+
 
 def allow_login_attempt(user_name):
     keys = [('ip', request.remote_addr), ('account', user_name)]
@@ -213,7 +224,6 @@ app.clientside_callback(
         (Output('login-submit', 'disabled'), True, False),
         (Output('login-password', 'disabled'), True, False),
         (Output('login-verify-code-input', 'disabled'), True, False),
-        (Output('login-status', 'children'), '正在验证账号…', ''),
     ],
 )
 def login(
@@ -255,7 +265,7 @@ def login(
             True,
         )
     if not allow_login_attempt(user_name):
-        return dash.no_update, fuc.FefferyFancyMessage('尝试次数过多，请稍后再试', type='error'), True
+        return dash.no_update, fuc.FefferyFancyMessage(t__other('尝试次数过多，请稍后再试'), type='error'), True
     if need_vc and vc_input != pic_vc_value:
         return (
             dash.no_update,
@@ -302,7 +312,6 @@ def login(
     prevent_initial_call=True,
     running=[
         (Output('login-otp', 'disabled'), True, False),
-        (Output('login-status', 'children'), '正在验证动态码…', ''),
     ],
 )
 def otp_login(otp_value, user_name, href):
@@ -313,7 +322,7 @@ def otp_login(otp_value, user_name, href):
     from common.utilities.util_jwt import jwt_encode_save_access_to_session
 
     if not allow_login_attempt(user_name):
-        return fuc.FefferyFancyMessage('尝试次数过多，请稍后再试', type='error'), None
+        return fuc.FefferyFancyMessage(t__other('尝试次数过多，请稍后再试'), type='error'), None
     otp_secret = user_repository.get_otp_secret(user_name)
     if not otp_secret:
         return (

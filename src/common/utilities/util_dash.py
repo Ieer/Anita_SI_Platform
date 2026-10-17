@@ -18,6 +18,7 @@ CALLBACK_PERMISSIONS = {
     'task_.task_log_c': '任务日志-页面',
     'setting_.notify_api_c': '通知接口-页面',
     'setting_.listen_api_c': '监听接口-页面',
+    'setting_.agent_provider_c': 'Agent配置-页面',
 }
 
 
@@ -61,17 +62,20 @@ class CustomDash(dash.Dash):
         return decorate
 
     def interpolate_index(self, **kwargs):
+        from i18n import get_current_locale, t__default
+
         configuration = json.dumps(browser_config(), separators=(',', ':')).replace('<', '\\u003c')
         kwargs['metas'] = kwargs.get('metas', '') + (
+            '<script>document.documentElement.lang=' + json.dumps(get_current_locale()) + ';</script>'
             '<script>window.platformThemeConfig=' + configuration + ';</script>'
             '<script src="/assets/js/theme.js"></script>'
         )
-        kwargs['app_entry'] = '''<div id="react-entry-point">
+        kwargs['app_entry'] = f'''<div id="react-entry-point">
 <div class="_dash-loading" role="status" aria-live="polite" aria-busy="true">
 <span class="platform-loader" aria-hidden="true"></span>
-<strong>正在加载平台</strong>
-<span class="platform-load-help">等待时间较长？<a href="">刷新重试</a></span>
-<noscript>请启用 JavaScript 后重新加载。</noscript>
+<strong>{t__default('正在加载平台')}</strong>
+<span class="platform-load-help">{t__default('等待时间较长？')}<a href="">{t__default('刷新重试')}</a></span>
+<noscript>{t__default('请启用 JavaScript 后重新加载。')}</noscript>
 </div></div>'''
         scripts = kwargs.pop('scripts')
         scripts = '''<script type="importmap">{"imports":{"three":"/assets/vendor/three/three.module.min.js"}}</script>''' + scripts

@@ -2,6 +2,10 @@
     "root_locale": "zh-cn",
     "topic": "other",
     "contents": {
+        "授权访问": {"en-us": "AUTHORIZED ACCESS"},
+        "正在验证账号…": {"en-us": "Verifying account…"},
+        "正在验证动态码…": {"en-us": "Verifying one-time code…"},
+        "尝试次数过多，请稍后再试": {"en-us": "Too many attempts. Please try again later."},
         "请不要使用IE内核浏览器": {
             "en-us": "Please do not use Internet Explorer"
         },

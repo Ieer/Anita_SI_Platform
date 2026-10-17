@@ -13,6 +13,8 @@ def render_lang_content(color='var(--platform-muted)'):
                 fuc.FefferyCookie(id='global-locale', expires=3600 * 24 * 365, cookieKey=translator.cookie_name)
             ),
             id='global-locale-switch',
+            title='切换到中文' if next_locale == 'zh-cn' else 'Switch to English',
+            **{'aria-label': '切换到中文' if next_locale == 'zh-cn' else 'Switch to English'},
             icon=fac.AntdIcon(
                 icon='md-translate',
                 style={

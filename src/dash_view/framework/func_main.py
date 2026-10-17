@@ -1,6 +1,7 @@
 import feffery_antd_components as fac
 import feffery_utils_components as fuc
 from dash import dcc, html
+from i18n import t__default
 
 
 def render():
@@ -33,7 +34,7 @@ def render():
                 [
                     fac.AntdIcon(icon='fc-high-priority', style={'fontSize': '28px'}),
                     fac.AntdText(
-                        '登录状态已过期/无效，请重新登录',
+                        t__default('登录状态已过期/无效，请重新登录'),
                         style={'marginLeft': '5px'},
                     ),
                 ]
@@ -42,8 +43,8 @@ def render():
             visible=False,
             maskClosable=False,
             closable=False,
-            title='系统提示',
-            okText='重新登录',
+            title=t__default('系统提示'),
+            okText=t__default('重新登录'),
             renderFooter=True,
             centered=True,
             cancelButtonProps={'style': {'display': 'none'}},

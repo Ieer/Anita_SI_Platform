@@ -12,7 +12,7 @@
     width: 100%;
     min-width: 0;
     color: var(--tc-ink);
-    padding: 12px 16px 24px;
+    padding: 12px 0 24px;
 }
 
 .tc-page *, .tc-page *::before, .tc-page *::after { box-sizing: border-box; }
@@ -117,7 +117,7 @@
 @media (max-width: 700px) {
     .tc-page-heading { padding-bottom: 14px; margin-bottom: 12px; }
     .tc-page-heading h2 { font-size: 20px; }
-    .tc-page { padding: 8px 8px 20px; }
+    .tc-page { padding: 8px 0 20px; }
     .tc-toolbar { align-items: stretch; }
     .tc-toolbar > * { flex: 1 1 140px; }
     .tc-summary-item { flex: 1 1 50%; padding-inline: 10px; border-bottom: 1px solid var(--tc-line); }

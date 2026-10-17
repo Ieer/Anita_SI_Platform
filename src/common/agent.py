@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -9,11 +10,17 @@ class AgentError(Exception):
     pass
 
 
+MAX_PROVIDER_STATE_BYTES = 32768
+
+
 @dataclass(frozen=True)
 class ModelSettings:
     api_key: str = field(repr=False)
     model: str
     base_url: str = 'https://api.openai.com/v1'
+    provider: str = 'openai_compatible'
+    profile_id: str | None = None
+    provider_options: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_environment(cls):
@@ -21,26 +28,78 @@ class ModelSettings:
             api_key=os.environ.get('SMART_AGENT_API_KEY', '').strip(),
             model=os.environ.get('SMART_AGENT_MODEL', '').strip(),
             base_url=os.environ.get('SMART_AGENT_BASE_URL', 'https://api.openai.com/v1').strip(),
+            provider=os.environ.get('SMART_AGENT_PROVIDER', 'openai_compatible').strip(),
+            provider_options={
+                key: os.environ.get('SMART_AGENT_COLUMBUS_' + key.upper(), '').strip()
+                for key in ('agent_id', 'tenant_id', 'client_id', 'client_secret', 'scope')
+            },
         )
-        if not settings.api_key or not settings.model:
-            raise AgentError('模型未配置，请在服务端设置 SMART_AGENT_API_KEY 和 SMART_AGENT_MODEL。')
+        settings.validate()
+        return settings
+
+    @classmethod
+    def from_profile(cls, profile):
+        settings = cls(
+            api_key=profile.get('api_key', '').strip(),
+            model=profile.get('model', '').strip(),
+            base_url=profile.get('base_url', '').strip(),
+            provider=profile.get('provider_id', '').strip(),
+            profile_id=profile.get('profile_id'),
+            provider_options=profile.get('provider_options', {}),
+        )
+        settings.validate()
+        return settings
+
+    def validate(self):
+        if (not self.api_key or not self.provider
+                or (self.provider == 'openai_compatible' and not self.model)):
+            raise AgentError('Agent 未配置，请在服务端设置 Provider 和对应访问凭证。')
         try:
-            parsed = urlsplit(settings.base_url)
+            parsed = urlsplit(self.base_url)
         except ValueError as error:
             raise AgentError('模型地址格式无效。') from error
         if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
                 or parsed.scheme not in {'http', 'https'}
                 or (parsed.scheme == 'http' and parsed.hostname not in {'localhost', '127.0.0.1', '::1'})):
             raise AgentError('模型地址必须使用 HTTPS；仅本机服务允许 HTTP。')
-        return settings
+        if self.provider == 'columbus_agent':
+            from common.columbus_provider import validate_options
+
+            if len(self.api_key) > 8192 or any(char in self.api_key for char in '\r\n'):
+                raise AgentError('Columbus APIM Subscription Key 格式无效。')
+            validate_options(self.provider_options)
+        return self
+
+    @property
+    def remote_session_key(self):
+        if not self.profile_id or self.profile_id == 'environment':
+            return self.provider
+        return hashlib.sha256(f'{self.provider}\0{self.profile_id}'.encode('utf-8')).hexdigest()
 
 
-def model_status():
+def model_status(profile_id=None):
     try:
-        settings = ModelSettings.from_environment()
-        return {'ready': True, 'model': settings.model, 'message': '模型已配置'}
+        if profile_id and profile_id != 'environment':
+            from database.sql_db.repositories import agent_provider_repository
+
+            settings = agent_provider_repository.resolve_profile_settings(profile_id)
+        else:
+            settings = ModelSettings.from_environment()
+        from common.agent_providers import registered_provider_ids
+
+        if settings.provider not in registered_provider_ids():
+            raise AgentError(f'Provider“{settings.provider}”未在服务端注册。')
+        return {
+            'ready': True,
+            'model': settings.model or ('Columbus Agent' if settings.provider == 'columbus_agent'
+                                        else settings.provider),
+            'provider': settings.provider,
+            'profile_id': settings.profile_id or 'environment',
+            'message': 'Agent 已配置，可进行连接测试',
+        }
     except AgentError as error:
-        return {'ready': False, 'model': None, 'message': str(error)}
+        return {'ready': False, 'model': None, 'provider': None, 'profile_id': profile_id,
+                'message': str(error)}
 
 
 def redact(text):
@@ -176,68 +235,79 @@ SYSTEM_PROMPT = '''你是企业任务工作台助手。只能调用本次提供�
 使用中文，回答简洁。'''
 
 
-def run_turn(prompt, menu_access, history=(), allow_log_export=False, client=None, access_provider=None):
+def run_turn_events(
+    prompt, menu_access, history=(), allow_log_export=False, client=None, access_provider=None,
+    remote_conversation_id=None, streaming=True, profile_id=None, provider_state=None,
+):
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 4000:
         raise AgentError('请输入 1 到 4000 字的消息。')
     tools = allowed_tools(menu_access, allow_log_export)
-    settings = ModelSettings.from_environment()
-    if client is None:
-        from openai import OpenAI
+    if profile_id and profile_id != 'environment':
+        from database.sql_db.repositories import agent_provider_repository
 
-        with OpenAI(api_key=settings.api_key, base_url=settings.base_url, timeout=20, max_retries=0) as sdk_client:
-            return run_turn(prompt, menu_access, history, allow_log_export,
-                            client=sdk_client, access_provider=access_provider)
-    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    for message in list(history)[-12:]:
-        if message.get('role') == 'user' and isinstance(message.get('content'), str):
-            messages.append({'role': message['role'], 'content': redact(message['content'])[:4000]})
-    messages.append({'role': 'user', 'content': redact(prompt)})
-    trace = []
-    proposals = []
-    for round_number in range(3):
+        settings = agent_provider_repository.resolve_profile_settings(profile_id)
+    else:
+        settings = ModelSettings.from_environment()
+
+    from common.agent_providers import AgentTurnRequest, create_provider
+
+    provider = create_provider(settings, client=client)
+    request = AgentTurnRequest(
+        prompt=prompt.strip(),
+        history=list(history),
+        remote_conversation_id=remote_conversation_id,
+        provider_state=provider_state,
+    )
+
+    def execute_permitted_tool(name, arguments):
+        current_access = access_provider() if access_provider is not None else menu_access
+        return execute_tool(name, arguments, current_access, allow_log_export)
+
+    result = yield from provider.stream_turn(request, tools, execute_permitted_tool, streaming=streaming)
+    return {
+        'answer': redact(result.answer)[:8000],
+        'trace': redact_structure(result.trace),
+        'model': result.model,
+        'proposals': result.proposals,
+        'remote_conversation_id': result.remote_conversation_id,
+        'provider': settings.provider,
+        'provider_state': result.provider_state,
+    }
+
+
+def run_turn(prompt, menu_access, history=(), allow_log_export=False, client=None, access_provider=None,
+             remote_conversation_id=None, profile_id=None, provider_state=None):
+    events = run_turn_events(
+        prompt, menu_access, history, allow_log_export, client, access_provider,
+        remote_conversation_id=remote_conversation_id, streaming=False, profile_id=profile_id,
+        provider_state=provider_state,
+    )
+    while True:
         try:
-            options = {'model': settings.model, 'messages': messages, 'max_tokens': 1200}
-            if tools:
-                options['tools'] = tools
-            response = client.chat.completions.create(**options)
-            message = response.choices[0].message
-        except Exception as error:
-            raise AgentError('模型请求失败或超时，请检查服务端模型配置后重试。') from error
-        calls = message.tool_calls or []
-        if not calls:
-            if not isinstance(message.content, str) or not message.content.strip():
-                raise AgentError('模型没有返回可显示的回答。')
-            return {'answer': redact(message.content)[:8000], 'trace': trace, 'model': settings.model,
-                    'proposals': proposals}
-        if round_number == 2 or len(calls) > 2:
-            raise AgentError('已达到工具调用上限，请缩小查询范围后重试。')
-        if any(not isinstance(call.id, str) or not call.id or len(call.id) > 128 for call in calls):
-            raise AgentError('模型工具调用 ID 无效。')
-        if len({call.id for call in calls}) != len(calls):
-            raise AgentError('模型工具调用 ID 重复。')
-        messages.append({
-            'role': 'assistant', 'content': redact(message.content) if message.content else None,
-            'tool_calls': [
-                {'id': call.id, 'type': 'function',
-                 'function': {'name': call.function.name, 'arguments': call.function.arguments}}
-                for call in calls
-            ],
-        })
-        for call in calls:
-            if not isinstance(call.function.arguments, str) or len(call.function.arguments) > 1000:
-                raise AgentError('模型工具参数过长或格式错误。')
-            try:
-                arguments = json.loads(call.function.arguments)
-            except (TypeError, ValueError) as error:
-                raise AgentError('模型工具参数不是有效 JSON。') from error
-            current_access = access_provider() if access_provider is not None else menu_access
-            if call.function.name == 'propose_run_task' and proposals:
-                raise AgentError('每轮只能提议运行一个任务。')
-            result = execute_tool(call.function.name, arguments, current_access, allow_log_export)
-            if call.function.name == 'propose_run_task':
-                proposals.append(result['proposal'])
-            content = json.dumps(redact_structure(result), ensure_ascii=False, default=str)
-            trace.append({'tool': call.function.name, 'status': result['status'],
-                          'arguments': redact(json.dumps(arguments, ensure_ascii=False))})
-            messages.append({'role': 'tool', 'tool_call_id': call.id, 'content': content})
-    raise AgentError('已达到模型调用上限。')
+            next(events)
+        except StopIteration as completed:
+            return completed.value
+
+
+def test_provider_connection(settings, client=None):
+    from common.agent_providers import AgentTurnRequest, create_provider
+
+    provider = create_provider(settings, client=client)
+
+    def deny_tool(name, arguments):
+        raise AgentError('连接测试不允许执行工具。')
+
+    events = provider.stream_turn(
+        AgentTurnRequest(prompt='请只回复 OK。', history=[]),
+        [],
+        deny_tool,
+        streaming=False,
+    )
+    while True:
+        try:
+            next(events)
+        except StopIteration as completed:
+            result = completed.value
+            if not result.answer.strip():
+                raise AgentError('服务已响应，但没有返回可显示的文本。')
+            return {'model': result.model, 'message': '连接成功，服务已返回测试回答。'}

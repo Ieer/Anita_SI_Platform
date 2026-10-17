@@ -2,6 +2,7 @@ import feffery_antd_components as fac
 from dash import html
 from config.anita_go_conf import ShowConf
 from common.utilities.util_menu_access import MenuAccess
+from i18n import t__default
 
 
 def render_aside_content(menu_access: MenuAccess):
@@ -17,9 +18,9 @@ def render_aside_content(menu_access: MenuAccess):
             ], className='platform-brand-copy'),
         ], className='platform-sidebar-brand'),
         html.Button(fac.AntdIcon(icon='antd-close'), id='platform-navigation-close',
-                className='platform-navigation-close', type='button', title='关闭主导航',
-                **{'aria-label': '关闭主导航'}),
-        html.Div('应用导航', className='platform-nav-caption'),
+                className='platform-navigation-close', type='button', title=t__default('关闭主导航'),
+                **{'aria-label': t__default('关闭主导航')}),
+        html.Div(t__default('应用导航'), className='platform-nav-caption'),
         fac.AntdMenu(
             id='main-menu', menuItems=navigation_items, mode='inline', theme='light',
             onlyExpandCurrentSubMenu=True,
@@ -27,4 +28,4 @@ def render_aside_content(menu_access: MenuAccess):
                         'collapse': fac.AntdIcon(icon='antd-caret-down')},
         ),
         html.Div([html.Span('SI-PLATFORM'), html.Span('OPERATIONS / AUTOMATION')], className='platform-nav-footer'),
-    ], id='platform-navigation', **{'aria-label': '主导航'})
+    ], id='platform-navigation', **{'aria-label': t__default('主导航')})

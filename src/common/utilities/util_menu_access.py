@@ -34,7 +34,7 @@ class MenuAccess:
         extra_access_metas = []
         # admin角色添加默认权限
         if 'admin' in user_roles:
-            extra_access_metas.extend(AccessFactory.admin_access_meta)
+            extra_access_metas.extend(AccessFactory.get_admin_access_meta())
         return extra_access_metas
 
     @staticmethod

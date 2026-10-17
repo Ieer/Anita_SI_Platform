@@ -8,6 +8,7 @@ import feffery_antd_components as fac
 from common import task_center
 from common.utilities.util_menu_access import get_menu_access
 from server import app
+from .i18n import task_label as t_task, task_message, task_operation_label, task_timestamp
 
 
 def _access():
@@ -15,7 +16,7 @@ def _access():
 
 
 def _time_label(value):
-	return task_center.display_timestamp(value) if value else '未计划'
+	return task_timestamp(value) if value else t_task('未计划')
 
 
 def _plan_label(row):
@@ -24,8 +25,13 @@ def _plan_label(row):
 		return ' '.join(str(plan.get(key, '*')) for key in
 						('second', 'minute', 'hour', 'day', 'month', 'day_of_week'))
 	if row.get('trigger') == 'interval':
-		return '每 ' + ' '.join(f'{value}{key}' for key, value in plan.items()
-							   if key in {'weeks', 'days', 'hours', 'minutes', 'seconds'} and value)
+		unit_labels = {
+			'weeks': '周期单位-周', 'days': '周期单位-天', 'hours': '周期单位-小时',
+			'minutes': '周期单位-分钟', 'seconds': '周期单位-秒',
+		}
+		return t_task('每') + ' ' + ' '.join(
+			f"{value}{t_task(unit_labels[key])}" for key, value in plan.items()
+			if key in unit_labels and value)
 	return str(plan.get('run_date') or row.get('trigger') or '—')
 
 
@@ -42,20 +48,21 @@ def load_platform(access, keyword='', status='', team='', task_type='', page=1, 
 			capabilities = task_center.task_capabilities(access, task_id)
 			actions = [{'content': label, 'type': 'link', 'custom': f'{operation}:{task_id}',
 						'danger': operation == 'delete'} for label, operation in [
-							('编辑', 'edit'), ('运行', 'run'),
-							('暂停' if record['enabled'] else '恢复',
-								 'pause' if record['enabled'] else 'resume'), ('日志', 'logs'), ('删除', 'delete')]
+							(t_task('编辑'), 'edit'), (t_task('运行'), 'run'),
+							(t_task('暂停') if record['enabled'] else t_task('恢复'),
+								 'pause' if record['enabled'] else 'resume'), (t_task('日志'), 'logs'),
+							(t_task('删除'), 'delete')]
 						 if operation in capabilities]
 		rows.append(dict(record, key=task_id or record['job_id'], actions=actions,
-						 group_name=record.get('group_name') or '未认领', plan_label=_plan_label(record),
+						 group_name=record.get('group_name') or t_task('未认领'), plan_label=_plan_label(record),
 						 next_run=_time_label(record.get('next_run')),
-						 state='状态未知' if record.get('guard_state') == 'unknown' else
-						 '运行中' if record.get('active_run_id') else
-						 '启用' if record['enabled'] else '已暂停'))
+						 state=t_task('状态未知') if record.get('guard_state') == 'unknown' else
+						 t_task('运行中') if record.get('active_run_id') else
+						 t_task('启用') if record['enabled'] else t_task('已暂停')))
 		if task_id and 'resolve' in capabilities:
-			actions.append({'content': '核实定义', 'type': 'link', 'custom': f'resolve_definition:{task_id}'})
+			actions.append({'content': t_task('核实定义'), 'type': 'link', 'custom': f'resolve_definition:{task_id}'})
 		if task_id and 'transfer' in capabilities:
-			actions.append({'content': '转移团队', 'type': 'link', 'custom': f'transfer:{task_id}'})
+			actions.append({'content': t_task('转移团队'), 'type': 'link', 'custom': f'transfer:{task_id}'})
 	return rows, result['total'], result
 
 
@@ -79,58 +86,58 @@ def refresh_platform(_init, _refresh, keyword, status, team, task_type, page, pa
 			pass
 		rows, total, result = load_platform(access, keyword, status, team, task_type, page or 1, page_size or 20,
 			(query or {}).get('task_id'))
-		dash.set_props('tc-platform-team', {'options': [{'label': '全部团队', 'value': ''},
+		dash.set_props('tc-platform-team', {'options': [{'label': t_task('全部团队'), 'value': ''},
 													   *task_center.list_teams(access)]})
 		notice = None if result['online'] else fac.AntdAlert(
-			message='调度服务未连接，显示已认领任务。', type='warning', showIcon=True)
-		return rows, total, html.Span(f'{total} 个匹配任务'), notice
+			message=t_task('调度服务未连接，显示已认领任务。'), type='warning', showIcon=True)
+		return rows, total, html.Span(f'{total} {t_task("个匹配任务")}'), notice
 	except Exception as exc:
 		return dash.no_update, dash.no_update, dash.no_update, fac.AntdAlert(
-			message=str(exc), type='error', showIcon=True)
+			message=task_message(str(exc)), type='error', showIcon=True)
 
 
 def _editor(values=None, teams=None, task_id=None):
 	values = values or {}
 	plan = values.get('plan') or {}
 	fields = [
-		('任务名称', fac.AntdInput(id='tc-edit-job-id', value=values.get('job_id', ''), disabled=bool(task_id))),
-		('团队', fac.AntdSelect(id='tc-edit-team', value=values.get('group_name'), options=teams or [])),
-		('触发方式', fac.AntdSelect(id='tc-edit-trigger', value=values.get('trigger', 'interval'),
+		(t_task('任务名称'), fac.AntdInput(id='tc-edit-job-id', value=values.get('job_id', ''), disabled=bool(task_id))),
+		(t_task('团队'), fac.AntdSelect(id='tc-edit-team', value=values.get('group_name'), options=teams or [])),
+		(t_task('触发方式'), fac.AntdSelect(id='tc-edit-trigger', value=values.get('trigger', 'interval'),
 			options=[{'label': label, 'value': value} for label, value in
-					 [('周期', 'interval'), ('Cron', 'cron'), ('单次', 'date'), ('监听', 'listen')]])),
-		('时区', fac.AntdInput(id='tc-edit-timezone', value=values.get('timezone', 'Asia/Shanghai'))),
-		('周期秒数', fac.AntdInputNumber(id='tc-edit-interval-seconds', min=1,
+					 [(t_task('周期'), 'interval'), ('Cron', 'cron'), (t_task('单次'), 'date'), (t_task('监听'), 'listen')]])),
+		(t_task('时区'), fac.AntdInput(id='tc-edit-timezone', value=values.get('timezone', 'Asia/Shanghai'))),
+		(t_task('周期秒数'), fac.AntdInputNumber(id='tc-edit-interval-seconds', min=1,
 			value=sum(plan.get(key, 0) * factor for key, factor in
 					  [('weeks', 604800), ('days', 86400), ('hours', 3600), ('minutes', 60), ('seconds', 1)]) or 60)),
-		('单次时间', fac.AntdInput(id='tc-edit-run-date', value=str(plan.get('run_date', '')))),
-		('执行位置', fac.AntdSelect(id='tc-edit-type', value=values.get('type', 'local'),
-			options=[{'label': '本机', 'value': 'local'}, {'label': 'SSH', 'value': 'ssh'}])),
-		('SSH 主机', fac.AntdInput(id='tc-edit-ssh-host', value=values.get('host', ''))),
-		('SSH 端口', fac.AntdInputNumber(id='tc-edit-ssh-port', min=1, max=65535, value=values.get('port', 22))),
-		('SSH 用户', fac.AntdInput(id='tc-edit-ssh-user', value=values.get('username', ''))),
-		('替换密码', fac.AntdInput(id='tc-edit-ssh-password', mode='password', value='')),
-		('超时秒数', fac.AntdInputNumber(id='tc-edit-timeout', min=1, max=86400, value=values.get('timeout', 300))),
-		('脚本类型', fac.AntdSelect(id='tc-edit-script-type', value=values.get('script_type', 'Python'),
+		(t_task('单次时间'), fac.AntdInput(id='tc-edit-run-date', value=str(plan.get('run_date', '')))),
+		(t_task('执行位置'), fac.AntdSelect(id='tc-edit-type', value=values.get('type', 'local'),
+			options=[{'label': t_task('本机'), 'value': 'local'}, {'label': 'SSH', 'value': 'ssh'}])),
+		(t_task('SSH 主机'), fac.AntdInput(id='tc-edit-ssh-host', value=values.get('host', ''))),
+		(t_task('SSH 端口'), fac.AntdInputNumber(id='tc-edit-ssh-port', min=1, max=65535, value=values.get('port', 22))),
+		(t_task('SSH 用户'), fac.AntdInput(id='tc-edit-ssh-user', value=values.get('username', ''))),
+		(t_task('替换密码'), fac.AntdInput(id='tc-edit-ssh-password', mode='password', value='')),
+		(t_task('超时秒数'), fac.AntdInputNumber(id='tc-edit-timeout', min=1, max=86400, value=values.get('timeout', 300))),
+		(t_task('脚本类型'), fac.AntdSelect(id='tc-edit-script-type', value=values.get('script_type', 'Python'),
 			options=[{'label': value, 'value': value} for value in ['Python', 'Bat', 'Shell']])),
 	]
 	children = [fac.AntdFormItem(component, label=label, id=component.id + '-field') for label, component in fields]
 	children += [fac.AntdFormItem(fac.AntdInput(id=f'tc-edit-cron-{suffix}',
-				 value=str(plan.get(key, default))), label=label, id=f'tc-edit-cron-{suffix}-field') for suffix, key, label, default in [
+				 value=str(plan.get(key, default))), label=t_task(label), id=f'tc-edit-cron-{suffix}-field') for suffix, key, label, default in [
 					 ('second', 'second', 'Cron 秒', '0'), ('minute', 'minute', 'Cron 分', '0'),
 					 ('hour', 'hour', 'Cron 时', '*'), ('day', 'day', 'Cron 日', '*'),
 					 ('month', 'month', 'Cron 月', '*'), ('weekday', 'day_of_week', 'Cron 周', '*')]]
 	children += [fac.AntdFormItem(fac.AntdInput(id='tc-edit-script', mode='text-area',
 					value=values.get('script_text', ''), autoSize={'minRows': 6, 'maxRows': 12}),
-					label='脚本', className='tc-form-wide'),
+					label=t_task('脚本'), className='tc-form-wide'),
 				 fac.AntdFormItem(fac.AntdInput(id='tc-edit-advanced', mode='text-area',
 					value=json.dumps({key: values.get(key) for key in
 						('extract_names', 'notify_channels', 'env_vars')}, ensure_ascii=False, indent=2),
-					autoSize={'minRows': 3, 'maxRows': 8}), label='提取 / 通知 / 环境变量 (JSON)', className='tc-form-wide'),
+					autoSize={'minRows': 3, 'maxRows': 8}), label=t_task('提取 / 通知 / 环境变量 (JSON)'), className='tc-form-wide'),
 				 fac.AntdFormItem(fac.AntdInput(id='tc-edit-plan-extra', mode='text-area',
 					value=json.dumps({key: value for key, value in plan.items() if key in
 						{'year', 'week', 'start_date', 'end_date', 'listen_channels', 'listen_keyword'}}, ensure_ascii=False, indent=2),
-						autoSize={'minRows': 2, 'maxRows': 5}), label='计划边界 / 监听渠道与关键词 (JSON)', className='tc-form-wide'),
-				 fac.AntdButton('预览未来 5 次', id='tc-edit-preview'),
+						autoSize={'minRows': 2, 'maxRows': 5}), label=t_task('计划边界 / 监听渠道与关键词 (JSON)'), className='tc-form-wide'),
+				 fac.AntdButton(t_task('预览未来 5 次'), id='tc-edit-preview'),
 				 html.Div(id='tc-edit-preview-result', className='tc-form-wide'),
 				 dcc.Store(id='tc-edit-expected-digest', data=values.get('expected_digest')),
 				 dcc.Store(id='tc-edit-expected-version', data=values.get('expected_version'))]
@@ -155,20 +162,20 @@ def open_editor(_create, _button, custom, row):
 	access = _access()
 	if dash.ctx.triggered_id == 'tc-platform-create':
 		teams = task_center.list_teams(access)
-		return True, _editor({'group_name': teams[0]['value']} if teams else {}, teams), '新建平台任务', None
+		return True, _editor({'group_name': teams[0]['value']} if teams else {}, teams), t_task('新建平台任务'), None
 	if not custom or ':' not in custom:
 		return (dash.no_update,) * 4
 	operation, task_id = custom.split(':', 1)
 	if operation == 'edit':
 		return True, _editor(task_center.get_edit_values(access, task_id),
-							 task_center.list_teams(access), task_id), '编辑任务', task_id
+							 task_center.list_teams(access), task_id), t_task('编辑任务'), task_id
 	if operation == 'logs':
 		dash.set_props('main-dcc-url', {'pathname': '/task_/task_log', 'search': f'?task_id={task_id}'})
 	elif operation in {'run', 'pause', 'resume', 'delete', 'resolve_definition', 'transfer'}:
 		dash.set_props('tc-platform-request-key', {'data': {
 			'operation': operation, 'task_id': task_id, 'request_key': uuid4().hex}})
 		dash.set_props('tc-platform-confirm-summary', {'children':
-			f"确认操作：{ {'run': '运行', 'pause': '暂停', 'resume': '恢复', 'delete': '删除', 'resolve_definition': '核实定义', 'transfer': '转移团队'}[operation]} / {(row or {}).get('name', task_id)}"})
+			f"{t_task('确认操作：')}{task_operation_label(operation)} / {(row or {}).get('name', task_id)}"})
 		dash.set_props('tc-platform-transfer-team', {'value': None, 'options': task_center.list_teams(access),
 			'style': {'width': '100%'} if operation == 'transfer' else {'display': 'none'}})
 		dash.set_props('tc-platform-resolve-reason', {'value': '',
@@ -193,13 +200,13 @@ _PLAN_STATES = [State(f'tc-edit-{name}', 'value') for name in [
 def preview_editor(_click, trigger, timezone, seconds, second, minute, hour, day, month, weekday, run_date, plan_extra):
 	try:
 		if trigger == 'listen':
-			return fac.AntdText('监听事件触发，没有未来时间点。')
+			return fac.AntdText(t_task('监听事件触发，没有未来时间点。'))
 		plan = _plan(trigger, seconds, second, minute, hour, day, month, weekday, run_date)
 		plan.update(json.loads(plan_extra or '{}'))
-		return fac.AntdText(' · '.join(task_center.display_timestamp(point, timezone)
+		return fac.AntdText(' · '.join(task_timestamp(point, timezone)
 			for point in task_center.preview_schedule(trigger, plan, timezone)))
 	except Exception as exc:
-		return fac.AntdText(str(exc), type='danger')
+		return fac.AntdText(task_message(str(exc)), type='danger')
 
 
 @app.callback(Output('tc-platform-editor', 'visible', allow_duplicate=True),
@@ -230,9 +237,9 @@ def save_editor(_ok, task_id, job_id, group_name, trigger, timezone, seconds, se
 		values['plan'] = extra if trigger == 'listen' else {**values['plan'], **extra}
 		task_center.save_task(_access(), values, task_id)
 		dash.set_props('tc-platform-refresh', {'nClicks': int(datetime.now().timestamp() * 1_000_000)})
-		return False, fac.AntdAlert(message='已保存并暂停。核对后请显式恢复。', type='success', showIcon=True)
+		return False, fac.AntdAlert(message=t_task('已保存并暂停。核对后请显式恢复。'), type='success', showIcon=True)
 	except Exception as exc:
-		return True, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+		return True, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 @app.callback(Output('tc-platform-confirm', 'visible', allow_duplicate=True),
@@ -255,10 +262,10 @@ def confirm_platform_action(_ok, action, reason=None, destination=None):
 			result = task_center.operate_task(_access(), action['task_id'], action['operation'],
 											  request_key=action['request_key'])
 		dash.set_props('tc-platform-refresh', {'nClicks': int(datetime.now().timestamp() * 1_000_000)})
-		return False, fac.AntdAlert(message=result.get('message') or result.get('status', '已提交'),
+		return False, fac.AntdAlert(message=task_message(result.get('message') or '已提交'),
 									type='warning' if result.get('status') == 'unknown' else 'success', showIcon=True)
 	except Exception as exc:
-		return False, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+		return False, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 @app.callback(Output('tc-platform-claim', 'visible'), Output('tc-platform-claim', 'children'),
@@ -268,8 +275,8 @@ def open_claim(_click):
 	rows = task_center.list_tasks(access, page_size=100)['rows']
 	return True, html.Div([
 		fac.AntdSelect(id='tc-claim-job', options=[{'label': row['name'], 'value': row['job_id']}
-					   for row in rows if not row.get('claimed')], placeholder='选择旧任务'),
-		fac.AntdSelect(id='tc-claim-team', options=task_center.list_teams(access), placeholder='归属团队')])
+					   for row in rows if not row.get('claimed')], placeholder=t_task('选择旧任务')),
+		fac.AntdSelect(id='tc-claim-team', options=task_center.list_teams(access), placeholder=t_task('归属团队'))])
 
 
 @app.callback(Output('tc-platform-claim', 'visible', allow_duplicate=True),
@@ -280,17 +287,17 @@ def claim_platform(_ok, job_id, group_name):
 	try:
 		task_center.claim_task(_access(), job_id, group_name)
 		dash.set_props('tc-platform-refresh', {'nClicks': int(datetime.now().timestamp() * 1_000_000)})
-		return False, fac.AntdAlert(message='已认领并暂停。', type='success', showIcon=True)
+		return False, fac.AntdAlert(message=t_task('已认领并暂停。'), type='success', showIcon=True)
 	except Exception as exc:
-		return True, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+		return True, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 @app.callback(Output('tc-platform-grant', 'visible'), Output('tc-platform-grant', 'children'),
 			  Input('tc-platform-grant-open', 'nClicks'), prevent_initial_call=True)
 def open_grant(_click):
 	return True, html.Div([
-		fac.AntdSelect(id='tc-grant-team', options=task_center.list_teams(_access()), placeholder='团队'),
-		fac.AntdInput(id='tc-grant-user', placeholder='团队成员用户名'),
+		fac.AntdSelect(id='tc-grant-team', options=task_center.list_teams(_access()), placeholder=t_task('团队')),
+		fac.AntdInput(id='tc-grant-user', placeholder=t_task('团队成员用户名')),
 		fac.AntdCheckboxGroup(id='tc-grant-operations', value=['view'], options=[
 			{'label': name, 'value': name} for name in sorted(task_center.ALLOWED_OPERATIONS)])])
 
@@ -302,6 +309,6 @@ def open_grant(_click):
 def save_grant(_ok, group_name, user_name, operations):
 	try:
 		task_center.grant_team(_access(), group_name, user_name, operations or [])
-		return False, fac.AntdAlert(message='团队授权已更新。', type='success', showIcon=True)
+		return False, fac.AntdAlert(message=t_task('团队授权已更新。'), type='success', showIcon=True)
 	except Exception as exc:
-		return True, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+		return True, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)

@@ -164,6 +164,245 @@
         "会话": {"en-us": "Conversation"},
         "消息": {"en-us": "Message"},
         "允许将脱敏日志发送给模型": {"en-us": "Allow sending redacted logs to the model"},
-        "发送": {"en-us": "Send"}
+        "发送": {"en-us": "Send"},
+        "运行 ID": {"en-us": "Run ID"},
+        "有什么想聊的？": {"en-us": "What would you like to talk about?"},
+        "选择 Agent 服务": {"en-us": "Select an Agent service"},
+        "当前对话使用的 Agent 服务": {"en-us": "Agent service for this conversation"},
+        "Agent 配置不可用，请检查系统设置。": {
+            "en-us": "Agent configuration is unavailable. Check the system settings."
+        },
+        "前往配置": {"en-us": "Go to settings"},
+        "发送消息": {"en-us": "Send message"},
+        "配置不可用": {"en-us": "Configuration unavailable"},
+        "服务端环境配置": {"en-us": "Server environment configuration"},
+        "环境变量": {"en-us": "Environment variables"},
+        "收起 Agent 对话": {"en-us": "Close Agent chat"},
+        "你：": {"en-us": "You: "},
+        "允许读取脱敏演示日志（仅本地）": {
+            "en-us": "Allow access to redacted demo logs (local only)"
+        },
+        "正在处理请求…": {"en-us": "Processing request…"},
+        "正在连接 Agent…": {"en-us": "Connecting to Agent…"},
+        "正在处理…": {"en-us": "Working…"},
+        "恢复浮窗": {"en-us": "Restore floating chat"},
+        "Agent 对话控件尚未就绪。": {"en-us": "Agent chat controls are not ready."},
+        "Agent 返回了无效的流事件。": {"en-us": "Agent returned an invalid stream event."},
+        "浏览器不支持 Agent 流式响应。": {"en-us": "This browser does not support Agent streaming."},
+        "对话连接中断，请刷新会话后确认消息状态。": {
+            "en-us": "The chat connection was interrupted. Refresh the conversation and check its message status."
+        },
+        "请求未完成，请稍后重试。": {"en-us": "The request did not complete. Try again later."},
+        "请新建或选择会话。": {"en-us": "Create or select a conversation."},
+        "此对话使用：{model}。切换服务后会重新建立远端 Agent 会话。": {
+            "en-us": "This conversation uses {model}. Switching services starts a new remote Agent session."
+        },
+        "Agent 未配置，请在服务端设置 Provider 和对应访问凭证。": {
+            "en-us": "Agent is not configured. Set a provider and its credentials on the server."
+        },
+        "Agent 已配置，可进行连接测试": {
+            "en-us": "Agent is configured and ready for a connection test."
+        },
+        "模型地址格式无效。": {"en-us": "The model URL is invalid."},
+        "模型地址必须使用 HTTPS；仅本机服务允许 HTTP。": {
+            "en-us": "The model URL must use HTTPS; HTTP is allowed only for local services."
+        },
+        "Columbus APIM Subscription Key 格式无效。": {
+            "en-us": "The Columbus APIM subscription key is invalid."
+        },
+        "没有工作台权限。": {"en-us": "You do not have access to the workbench."},
+        "访问权限已变更，请重新登录。": {
+            "en-us": "Your access changed. Sign in again."
+        },
+        "模型请求了未授权或不支持的工具。": {
+            "en-us": "The model requested an unauthorized or unsupported tool."
+        },
+        "工具参数必须是对象。": {"en-us": "Tool arguments must be an object."},
+        "任务数量必须是 1 到 20 的整数。": {"en-us": "Task count must be an integer from 1 to 20."},
+        "任务 ID 无效。": {"en-us": "The task ID is invalid."},
+        "请输入 1 到 4000 字的消息。": {"en-us": "Enter a message between 1 and 4,000 characters."},
+        "连接测试不允许执行工具。": {"en-us": "Tools cannot be executed during a connection test."},
+        "服务已响应，但没有返回可显示的文本。": {
+            "en-us": "The service responded but returned no displayable text."
+        },
+        "会话数据库不可用，请联系管理员。": {
+            "en-us": "The conversation database is unavailable. Contact an administrator."
+        },
+        "会话正在切换，请稍后再发送。": {
+            "en-us": "The conversation is switching. Try sending again shortly."
+        },
+        "请求未完成，请检查服务连接后重试。": {
+            "en-us": "The request did not complete. Check the service connection and try again."
+        },
+        "配置切换未完成，请刷新会话后重试。": {
+            "en-us": "The service switch did not complete. Refresh the conversation and try again."
+        },
+        "审批记录不可用，请刷新会话。": {
+            "en-us": "Approval records are unavailable. Refresh the conversation."
+        },
+        "会话正在切换，请稍后再审批。": {
+            "en-us": "The conversation is switching. Try again shortly."
+        },
+        "审批决定无效。": {"en-us": "The approval decision is invalid."},
+        "请先核对任务脚本及影响。": {
+            "en-us": "Review the task script and its impact before proceeding."
+        },
+        "审批处理未完成。请刷新并核对运行 ID，不要重复提交。": {
+            "en-us": "Approval was not completed. Refresh and verify the run ID; do not submit again."
+        },
+        "已拒绝，未提交任务。": {"en-us": "Rejected; the task was not submitted."},
+        "任务未获运行授权或不在运行白名单中。": {
+            "en-us": "The task is not authorized to run or is not on the allowlist."
+        },
+        "调度服务不可用，未提交运行请求。": {
+            "en-us": "The scheduler is unavailable. No run request was submitted."
+        },
+        "任务不存在、已暂停或不是本地任务。": {
+            "en-us": "The task does not exist, is paused, or is not a local task."
+        },
+        "任务未认领或团队未授予运行权限。": {
+            "en-us": "The task is unclaimed or the team has not granted run permission."
+        },
+        "没有任务运行授权，未提交运行请求。": {
+            "en-us": "You are not authorized to run this task. No run request was submitted."
+        },
+        "任务内容已变更，请重新生成提议并核对。": {
+            "en-us": "The task has changed. Generate a new proposal and review it."
+        },
+        "访问权限或运行白名单已变更，未提交运行请求。": {
+            "en-us": "Access or the run allowlist changed. No run request was submitted."
+        },
+        "运行回执不匹配。": {"en-us": "The run receipt does not match."},
+        "调度服务不可用，无法读取当前任务。": {
+            "en-us": "The scheduler is unavailable; current tasks cannot be read."
+        },
+        "仅生成提议，尚未运行；需用户在审批区批准。": {
+            "en-us": "Proposal created only; nothing has run. User approval is required."
+        },
+        "日志数据库不可用。": {"en-us": "The log database is unavailable."},
+        "未找到已完成的运行日志。": {"en-us": "No completed run log was found."},
+        "Columbus 配置必须是对象。": {"en-us": "Columbus configuration must be an object."},
+        "Columbus 扩展配置过大。": {"en-us": "Columbus additional configuration is too large."},
+        "Columbus 请求受到限流，请稍后确认状态再重试。": {
+            "en-us": "Columbus rate-limited the request. Check its status before retrying."
+        },
+        "Columbus 响应过大，无法安全处理。": {
+            "en-us": "The Columbus response is too large to process safely."
+        },
+        "Columbus 返回的不是有效 JSON；当前 Provider 尚不支持上游 SSE。": {
+            "en-us": "Columbus returned invalid JSON; this provider does not support upstream SSE."
+        },
+        "Columbus 响应格式无效。": {"en-us": "The Columbus response format is invalid."},
+        "Columbus Token 响应缺少有效凭证或有效期。": {
+            "en-us": "The Columbus token response is missing a valid credential or expiry."
+        },
+        "Columbus 请求超时；远端任务可能仍在执行，请确认状态后再重试，勿重复提交。": {
+            "en-us": "The Columbus request timed out. The remote task may still be running; check its status before retrying and do not resubmit."
+        },
+        "Columbus 连接中断；远端执行状态未知，请确认后再重试。": {
+            "en-us": "The Columbus connection was interrupted and remote status is unknown. Verify before retrying."
+        },
+        "Columbus 上轮未返回原生 messages，无法可靠续接。请新建对话，并向平台确认 history 协议。": {
+            "en-us": "The previous Columbus turn returned no native messages, so it cannot be resumed reliably. Start a new conversation and confirm the history protocol with the platform."
+        },
+        "Columbus 已保存的原生历史无效，请新建对话。": {
+            "en-us": "The saved native Columbus history is invalid. Start a new conversation."
+        },
+        "Columbus 对话历史过大，请新建对话。": {
+            "en-us": "The Columbus conversation history is too large. Start a new conversation."
+        },
+        "Columbus 返回的对话历史过大，请新建对话。": {
+            "en-us": "The conversation history returned by Columbus is too large. Start a new conversation."
+        },
+        "当前 Columbus Provider 尚不支持上游 SSE；请确认完整结果模式，勿重复提交任务。": {
+            "en-us": "This Columbus provider does not support upstream SSE. Confirm complete-result mode and do not resubmit the task."
+        },
+        "Columbus 响应缺少有效 data。": {"en-us": "The Columbus response is missing valid data."},
+        "Columbus 任务结果格式无效。": {"en-us": "The Columbus task result format is invalid."},
+        "Columbus 返回业务错误，请检查限流、上下文长度或 Agent 插件配置。": {
+            "en-us": "Columbus returned a business error. Check rate limits, context length, or Agent plugin configuration."
+        },
+        "Columbus 回答格式无效。": {"en-us": "The Columbus answer format is invalid."},
+        "Columbus 任务失败或已取消，请联系管理员确认远端状态。": {
+            "en-us": "The Columbus task failed or was cancelled. Contact an administrator to verify its remote status."
+        },
+        "Columbus 仅返回异步任务，查询协议尚未提供；请在远端确认任务状态，勿重复提交。": {
+            "en-us": "Columbus returned only an asynchronous task, but no polling protocol is available. Verify its remote status and do not resubmit."
+        },
+        "Columbus 未返回明确的成功状态，无法确认回答。": {
+            "en-us": "Columbus did not return an explicit success status, so the answer cannot be confirmed."
+        },
+        "Columbus 任务与回答状态不一致，无法确认回答。": {
+            "en-us": "The Columbus task and answer statuses do not match, so the answer cannot be confirmed."
+        },
+        "Columbus 响应缺少 output。": {"en-us": "The Columbus response is missing output."},
+        "Columbus 消息内容格式无效。": {"en-us": "The Columbus message content format is invalid."},
+        "Columbus 没有返回可显示的回答。": {"en-us": "Columbus returned no displayable answer."},
+        "Columbus 返回的原生 messages 格式无效。": {
+            "en-us": "The native messages returned by Columbus have an invalid format."
+        },
+        "模型请求失败或超时，请检查服务端模型配置后重试。": {
+            "en-us": "The model request failed or timed out. Check the server-side model configuration and try again."
+        },
+        "模型没有返回可显示的回答。": {"en-us": "The model returned no displayable answer."},
+        "已达到工具调用上限，请缩小查询范围后重试。": {
+            "en-us": "The tool-call limit was reached. Narrow the query and try again."
+        },
+        "模型工具调用 ID 无效。": {"en-us": "The model tool-call ID is invalid."},
+        "模型工具调用 ID 重复。": {"en-us": "The model returned a duplicate tool-call ID."},
+        "模型工具参数过长或格式错误。": {
+            "en-us": "The model tool arguments are too long or malformed."
+        },
+        "模型工具参数不是有效 JSON。": {"en-us": "The model tool arguments are not valid JSON."},
+        "每轮只能提议运行一个任务。": {
+            "en-us": "Only one task can be proposed per turn."
+        },
+        "已达到模型调用上限。": {"en-us": "The model-call limit was reached."},
+        "外部 Agent Provider 加载失败，请检查服务端模块配置。": {
+            "en-us": "The external Agent provider could not be loaded. Check the server module configuration."
+        },
+        "正在处理授权工具请求…": {"en-us": "Processing an authorized tool request…"},
+        "工具处理完成，正在整理答复…": {"en-us": "Tool processing is complete; preparing the response…"},
+        "正在连接 Columbus Agent；当前使用完整结果模式…": {
+            "en-us": "Connecting to Columbus Agent using complete-result mode…"
+        },
+        "上游未返回 messages；本次回答可显示，但下一轮无法可靠续接。": {
+            "en-us": "The upstream returned no messages. This answer is displayable, but the next turn cannot be resumed reliably."
+        },
+        "Provider“{provider}”未在服务端注册。": {
+            "en-us": "Provider \"{provider}\" is not registered on the server."
+        },
+        "未注册的 Agent Provider：{provider}": {
+            "en-us": "Unregistered Agent provider: {provider}"
+        },
+        "Columbus {label} 必须是有效 UUID。": {
+            "en-us": "Columbus {label} must be a valid UUID."
+        },
+        "请填写有效的 Columbus {label}。": {
+            "en-us": "Enter a valid Columbus {label}."
+        },
+        "Columbus {stage}认证或授权失败，请检查凭证、订阅和 Scope。": {
+            "en-us": "Columbus {stage} authentication or authorization failed. Check credentials, subscription, and Scope."
+        },
+        "Columbus {stage}失败（HTTP {status}），请联系管理员。": {
+            "en-us": "Columbus {stage} failed (HTTP {status}). Contact an administrator."
+        },
+        "Token 获取": {"en-us": "token acquisition"},
+        "Agent 请求": {"en-us": "Agent request"},
+        "页面助手": {"en-us": "Page assistant"},
+        "仅辅助定位、填写和筛选，不执行任务": {
+            "en-us": "Assistance only for locating, filling, and filtering; task execution is not allowed"
+        },
+        "加载页面助手": {"en-us": "Load page assistant"},
+        "当前页面：等待页面上下文": {"en-us": "Current page: waiting for page context"},
+        "页面助手未加载。点击按钮后才会连接浏览器辅助脚本。": {
+            "en-us": "Page assistant is not loaded. Click the button to connect the browser helper."
+        },
+        "页面助手地址无效，请联系管理员配置 HTTPS 地址。": {
+            "en-us": "The page assistant URL is invalid. Ask an administrator to configure an HTTPS URL."
+        },
+        "页面助手已加载：可定位、填写和筛选；执行任务仍需平台审批。": {
+            "en-us": "Page assistant loaded: it can locate, fill, and filter; task execution still requires platform approval."
+        }
     }
 }

@@ -13,7 +13,7 @@ def get_data():
             'key': i.role_name,
             **{
                 **i.__dict__,
-                'access_metas': f'{", ".join(i.__dict__["access_metas"])}',
+                'access_metas': ', '.join(t__access(meta) for meta in i.access_metas),
                 'update_datetime': f'{i.__dict__["update_datetime"]:%Y-%m-%d %H:%M:%S}',
                 'create_datetime': f'{i.__dict__["create_datetime"]:%Y-%m-%d %H:%M:%S}',
             },

@@ -13,6 +13,7 @@ from common.utilities.util_theme import theme_spec
 from config.access_factory import AccessFactory
 from dash_view.pages import login, main
 from server import app, server
+from i18n import get_current_locale
 
 logger = Log.get_logger(__name__)
 
@@ -45,7 +46,7 @@ app.layout = lambda: fac.AntdConfigProvider(fuc.FefferyTopProgress(
     includeProps=['root-container.children'],
     minimum=0.33,
     color='#087f77',
-), id='platform-theme-provider', algorithm='default', token=theme_spec()['token'])
+), id='platform-theme-provider', algorithm='default', token=theme_spec()['token'], locale=get_current_locale())
 
 app.clientside_callback(
     """() => window.platformTheme.connect()""",

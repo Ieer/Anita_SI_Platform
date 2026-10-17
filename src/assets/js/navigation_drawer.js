@@ -23,7 +23,7 @@
             if (open) {
                 sidebar.setAttribute('role', 'dialog');
                 sidebar.setAttribute('aria-modal', 'true');
-                sidebar.setAttribute('aria-label', '主导航');
+                sidebar.setAttribute('aria-label', document.getElementById('platform-navigation')?.getAttribute('aria-label') || '');
             } else {
                 sidebar.removeAttribute('role');
                 sidebar.removeAttribute('aria-modal');

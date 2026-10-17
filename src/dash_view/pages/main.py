@@ -45,8 +45,8 @@ def render_content(menu_access: MenuAccess, href: str):
                 id='platform-nav-backdrop',
                 className='platform-nav-backdrop',
                 tabIndex=-1,
-                title='关闭主导航',
-                **{'aria-label': '关闭主导航'},
+                title=t__default('关闭主导航'),
+                **{'aria-label': t__default('关闭主导航')},
             ),
             # 内容列
             fac.AntdCol(
@@ -60,8 +60,8 @@ def render_content(menu_access: MenuAccess, href: str):
                     ),
                     html.Div([
                         fac.AntdIcon(icon='antd-info-circle'),
-                        html.Span('演示模式'),
-                        html.Span('合成指标与任务 · Anita 固定剧本 · 无模型与外部执行'),
+                        html.Span(t__default('演示模式')),
+                        html.Span(t__default('合成指标与任务 · Anita 固定剧本 · 无模型与外部执行')),
                     ], id='platform-demo-banner', className='platform-demo-banner', role='status') if demo_mode else None,
                     # tabs块
                     fac.AntdRow(

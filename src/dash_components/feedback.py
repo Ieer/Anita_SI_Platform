@@ -1,6 +1,7 @@
 from dash import set_props
 from typing import Dict, Literal, Optional, Union
 from uuid import uuid4
+from i18n import t__default
 
 
 class MessageManager:
@@ -33,7 +34,7 @@ class MessageManager:
                     'props': {
                         'id': id,
                         'className': className,
-                        'content': content,
+                        'content': t__default(content) if content == '请求成功' else content,
                         'duration': duration,
                         'icon': icon,
                         'iconRenderer': iconRenderer,
@@ -75,7 +76,7 @@ class MessageManager:
                     'props': {
                         'id': id,
                         'className': className,
-                        'content': content,
+                        'content': t__default(content) if content == '请求成功' else content,
                         'duration': duration,
                         'icon': icon,
                         'iconRenderer': iconRenderer,
@@ -117,7 +118,7 @@ class MessageManager:
                     'props': {
                         'id': id,
                         'className': className,
-                        'content': content,
+                        'content': t__default(content) if content == '请求成功' else content,
                         'duration': duration,
                         'icon': icon,
                         'iconRenderer': iconRenderer,
@@ -159,7 +160,7 @@ class MessageManager:
                     'props': {
                         'id': id,
                         'className': className,
-                        'content': content,
+                        'content': t__default(content) if content == '请求失败' else content,
                         'duration': duration,
                         'icon': icon,
                         'iconRenderer': iconRenderer,
@@ -201,7 +202,7 @@ class MessageManager:
                     'props': {
                         'id': id,
                         'className': className,
-                        'content': content,
+                        'content': t__default(content) if content == '请求异常' else content,
                         'duration': duration,
                         'icon': icon,
                         'iconRenderer': iconRenderer,
@@ -266,7 +267,7 @@ class NotificationManager:
                         'description': description,
                         'duration': duration,
                         'key': key,
-                        'message': message,
+                        'message': t__default(message) if message == '请求成功' else message,
                         'placement': placement,
                         'style': style,
                         'top': top,
@@ -321,7 +322,7 @@ class NotificationManager:
                         'description': description,
                         'duration': duration,
                         'key': key,
-                        'message': message,
+                        'message': t__default(message) if message == '请求成功' else message,
                         'placement': placement,
                         'style': style,
                         'top': top,
@@ -376,7 +377,7 @@ class NotificationManager:
                         'description': description,
                         'duration': duration,
                         'key': key,
-                        'message': message,
+                        'message': t__default(message) if message == '请求成功' else message,
                         'placement': placement,
                         'style': style,
                         'top': top,
@@ -431,7 +432,7 @@ class NotificationManager:
                         'description': description,
                         'duration': duration,
                         'key': key,
-                        'message': message,
+                        'message': t__default(message) if message == '请求失败' else message,
                         'placement': placement,
                         'style': style,
                         'top': top,
@@ -486,7 +487,7 @@ class NotificationManager:
                         'description': description,
                         'duration': duration,
                         'key': key,
-                        'message': message,
+                        'message': t__default(message) if message == '请求异常' else message,
                         'placement': placement,
                         'style': style,
                         'top': top,

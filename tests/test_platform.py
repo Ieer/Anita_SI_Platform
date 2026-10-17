@@ -12,6 +12,9 @@ sys.path.insert(0, str(ROOT / 'src'))
 SPEC = importlib.util.spec_from_file_location('scaffold_page', ROOT / 'scripts' / 'scaffold_page.py')
 scaffold_page = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(scaffold_page)
+CHECK_SPEC = importlib.util.spec_from_file_location('check_pages', ROOT / 'scripts' / 'check_pages.py')
+check_pages = importlib.util.module_from_spec(CHECK_SPEC)
+CHECK_SPEC.loader.exec_module(check_pages)
 
 
 class ThemeTests(unittest.TestCase):
@@ -203,11 +206,14 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn('def render_content(menu_access: MenuAccess, **kwargs)', source)
             self.assertIn('platform-template-metrics', source)
             self.assertIn('platform-template-filters', source)
+            self.assertIn("template_capabilities = ('metrics', 'filters', 'table')", source)
+            self.assertIn("'data-template-capabilities': ','.join(template_capabilities)", source)
             self.assertIn('analytics-overview-content-table', source)
             self.assertIn('access_metas =', source)
             self.assertIn('import dash_callback.application.analytics.overview_c  # noqa', source)
             callback = (root / 'src/dash_callback/application/analytics/overview_c.py').read_text(encoding='utf-8')
             self.assertIn("if not access.has_access('Overview-页面')", callback)
+            self.assertIn("Output('analytics-overview-content-table', 'data')", callback)
             self.assertIn('DEMO-001', callback)
             self.assertIn('def filter_sample_rows', callback)
             with self.assertRaises(ValueError):
@@ -243,6 +249,32 @@ class ScaffoldTests(unittest.TestCase):
                     for name in list(sys.modules):
                         if name.startswith(('dash_view.application.inventory_probe', 'dash_callback.application.inventory_probe')):
                             sys.modules.pop(name)
+
+    def test_full_scaffold_generates_i18n_tests_and_page_type(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            files = scaffold_page.scaffold(
+                root, 'analytics_full', 'Analytics', 'antd-appstore', 10,
+                ['Overview:overview:1'], page_type='dashboard',
+                with_i18n=True, with_tests=True,
+            )
+            self.assertEqual(len(files), 7)
+            view = (root / 'src/dash_view/application/analytics_full/overview.py').read_text(encoding='utf-8')
+            self.assertIn("template_type = 'dashboard'", view)
+            self.assertIn("template_capabilities = ('metrics', 'charts', 'filters', 'table')", view)
+            self.assertIn("className='platform-template-dashboard'", view)
+            self.assertIn("locale_topic='analytics_full'", view)
+            catalog = json.loads((root / 'src/translations/topic_locales/analytics_full.json').read_text(encoding='utf-8'))
+            self.assertEqual(catalog['topic'], 'analytics_full')
+            self.assertIn('记录列表', catalog['contents'])
+            generated_test = root / 'tests/test_analytics_full_pages.py'
+            self.assertTrue(generated_test.exists())
+            self.assertEqual(check_pages.validate(root / 'src/config/applications.json'), ['analytics_full.overview'])
+            form_source = scaffold_page._page_view_source(
+                'form_probe', {'route': 'create', 'title': 'Create', 'icon': 'antd-file', 'order': 1},
+                page_type='form',
+            )
+            self.assertIn("className='platform-template-form'", form_source)
 
     def test_preview_and_invalid_input_do_not_write(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -533,7 +565,9 @@ class TaskPageTests(unittest.TestCase):
             reader_layout = overview.render_content(reader)
             admin_layout = overview.render_content(admin)
         self.assertNotIn('tc-scheduler-policy-mode', str(reader_layout))
+        self.assertNotIn('tc-scheduler-keep-awake', str(reader_layout))
         self.assertIn('tc-scheduler-policy-mode', str(admin_layout))
+        self.assertIn('tc-scheduler-keep-awake', str(admin_layout))
 
     def test_offline_table_renders_and_refresh_retains_data(self):
         import dash
@@ -548,6 +582,18 @@ class TaskPageTests(unittest.TestCase):
 
 
 class RegistryTests(unittest.TestCase):
+    def test_system_admin_receives_registered_template_permissions(self):
+        from common.utilities.util_menu_access import MenuAccess
+        from config.access_factory import AccessFactory
+
+        with patch.object(AccessFactory, 'admin_access_meta', ('内置-权限',)), \
+                patch.object(AccessFactory, 'get_dict_access_meta2menu_item',
+                              return_value={'模板看板-页面': 'analytics.overview'}):
+            self.assertEqual(
+                set(MenuAccess.get_extra_access_meta(['admin'])),
+                {'内置-权限', '模板看板-页面'},
+            )
+
     def test_scheduler_policy_is_admin_only_and_unassignable(self):
         from config.access_factory import AccessFactory
 

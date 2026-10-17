@@ -50,8 +50,17 @@ class StartupConfigTests(unittest.TestCase):
             'schema': 1,
             'revision': 0,
             'scheduler_mode': DEFAULT_STARTUP_MODE,
+            'keep_awake': False,
         })
         self.assertFalse(self.path.exists())
+
+    def test_legacy_config_defaults_keep_awake_to_false(self):
+        self.path.write_text(json.dumps({
+            'schema': 1,
+            'revision': 3,
+            'scheduler_mode': 'web_only',
+        }), encoding='utf-8')
+        self.assertEqual(load_startup_config(self.path)['keep_awake'], False)
 
     def test_default_path_uses_repository_user_data_cache(self):
         self.assertEqual(startup_config_path(), ROOT / 'user_data' / 'cache' / 'startup.json')
@@ -82,6 +91,7 @@ class StartupConfigTests(unittest.TestCase):
     def test_save_increments_revision_and_rejects_stale_writer(self):
         saved = save_scheduler_mode('paired_paused', 0, self.path)
         self.assertEqual(saved['revision'], 1)
+        self.assertFalse(saved['keep_awake'])
         self.assertEqual(load_startup_config(self.path), saved)
         with self.assertRaisesRegex(StartupConfigError, 'changed'):
             save_scheduler_mode('web_only', 0, self.path)
@@ -104,6 +114,8 @@ class StartupConfigTests(unittest.TestCase):
             save_scheduler_mode('shell_command', 0, self.path)
         with self.assertRaises(StartupConfigError):
             save_scheduler_mode('web_only', True, self.path)
+        with self.assertRaises(StartupConfigError):
+            save_scheduler_mode('web_only', 0, self.path, keep_awake='yes')
 
     def test_cli_mode_overrides_saved_policy_and_init_is_opt_in(self):
         saved = save_scheduler_mode('paired_paused', 0, self.path)
@@ -182,6 +194,87 @@ class StartupConfigTests(unittest.TestCase):
                 patch.object(start_ap, '_connect_scheduler_status', side_effect=PermissionError('auth failed')), \
                 self.assertRaisesRegex(RuntimeError, '不会接管'):
             start_ap._check_scheduler_conflict()
+
+
+class DashHelperTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('dash_helper', ROOT / 'tools' / 'dash_helper.py')
+        cls.helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.helper)
+
+    def test_web_command_overrides_saved_scheduler_policy(self):
+        args = self.helper.parse_args(['web', '--port', '8100'])
+        command = self.helper.build_command('web', args)
+        self.assertEqual(command[1], str(ROOT / 'scripts' / 'start_ap.py'))
+        self.assertEqual(command[2:], [
+            '--scheduler-mode', 'web_only', '--mode', 'prod', '--host', '127.0.0.1', '--port', '8100',
+        ])
+
+    def test_paused_start_uses_private_ephemeral_secret(self):
+        with patch.object(self.helper.subprocess, 'run', return_value=Mock(returncode=0)) as run, \
+                patch.dict(self.helper.os.environ, {'SMART_AGENT_SCHEDULER_RPC_SECRET': ''}):
+            self.assertEqual(self.helper.main(['paired-paused']), 0)
+            command = run.call_args.args[0]
+            self.assertIn('paired_paused', command)
+            self.assertNotIn('paired_running', command)
+            secret = run.call_args.kwargs['env']['SMART_AGENT_SCHEDULER_RPC_SECRET']
+            self.assertGreaterEqual(len(secret), 32)
+            self.assertEqual(self.helper.os.environ['SMART_AGENT_SCHEDULER_RPC_SECRET'], '')
+
+    def test_existing_rpc_secret_is_preserved(self):
+        with patch.object(self.helper.subprocess, 'run', return_value=Mock(returncode=0)) as run, \
+                patch.dict(self.helper.os.environ, {'SMART_AGENT_SCHEDULER_RPC_SECRET': 'existing-value'}):
+            self.helper.main(['paired-paused'])
+        self.assertEqual(run.call_args.kwargs['env']['SMART_AGENT_SCHEDULER_RPC_SECRET'], 'existing-value')
+
+    def test_dry_run_never_spawns_any_action(self):
+        with patch.object(self.helper.subprocess, 'run') as run:
+            for action in self.helper.ACTIONS:
+                with self.subTest(action=action):
+                    self.assertEqual(self.helper.main([action, '--dry-run']), 0)
+        run.assert_not_called()
+
+    def test_database_write_requires_explicit_consent(self):
+        with patch.object(self.helper.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            self.assertEqual(self.helper.main(['init-db']), 2)
+            run.assert_not_called()
+            self.assertEqual(self.helper.main(['init-db', '--yes']), 0)
+        self.assertEqual(run.call_args.args[0][1:], [str(ROOT / 'scripts' / 'start_ap.py'), '--only-init'])
+
+    def test_menu_database_confirmation_can_cancel(self):
+        args = self.helper.parse_args([])
+        with patch('builtins.input', return_value='no'), patch.object(self.helper.subprocess, 'run') as run:
+            self.assertEqual(self.helper.execute('init-db', args, interactive=True), 2)
+        run.assert_not_called()
+
+    def test_commands_use_absolute_paths_and_preserve_exit_status(self):
+        expected = {
+            'demo': [str(ROOT / 'scripts' / 'demo_task_center.py'), '--port', '8097'],
+            'check-pages': [str(ROOT / 'scripts' / 'check_pages.py')],
+            'test': ['-m', 'pytest', str(ROOT / 'tests'), '-q'],
+            'check-deps': ['-m', 'pip', 'check'],
+        }
+        for action, suffix in expected.items():
+            with self.subTest(action=action), \
+                    patch.object(self.helper.subprocess, 'run', return_value=Mock(returncode=7)) as run:
+                self.assertEqual(self.helper.main([action]), 7)
+                self.assertEqual(run.call_args.args[0][1:], suffix)
+                self.assertEqual(run.call_args.kwargs['cwd'], ROOT)
+                self.assertFalse(run.call_args.kwargs.get('shell', False))
+
+    def test_invalid_ports_are_rejected_before_spawn(self):
+        with patch.object(self.helper.subprocess, 'run') as run:
+            for port in ('0', '65536', 'invalid'):
+                with self.subTest(port=port), self.assertRaises(SystemExit):
+                    self.helper.main(['web', '--port', port])
+        run.assert_not_called()
+
+    def test_noninteractive_menu_does_not_wait_for_input(self):
+        with patch.object(self.helper.sys.stdin, 'isatty', return_value=False), \
+                patch('builtins.input') as prompt:
+            self.assertEqual(self.helper.main([]), 2)
+        prompt.assert_not_called()
 
 
 if __name__ == '__main__':

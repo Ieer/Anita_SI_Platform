@@ -9,6 +9,7 @@ import feffery_antd_components as fac
 from common import task_center
 from common.utilities.util_menu_access import get_menu_access
 from server import app
+from .i18n import task_label as t_task, task_message, task_operation_label, task_timestamp
 
 
 class _PageAccess:
@@ -35,10 +36,10 @@ def load_windows(access, keyword='', status='', page=1, page_size=20):
         raw_status = row.get('last_status') or ''
         rows.append({
             'key': row.get('task_id') or row['job_id'], 'task_id': row.get('task_id'),
-            'job_id': row['job_id'], 'name': row['name'], 'group_name': row.get('group_name') or '未认领',
-            'next_run': task_center.display_timestamp(row.get('next_run')),
-            'state': f"{'运行中' if row.get('native_status') == 'Running' else '就绪' if row.get('enabled') else '已禁用'} · LastTaskResult {raw_status or '—'}",
-            'policy': row.get('multiple_instances_policy') or '不可用',
+            'job_id': row['job_id'], 'name': row['name'], 'group_name': row.get('group_name') or t_task('未认领'),
+            'next_run': task_timestamp(row.get('next_run')),
+            'state': f"{t_task('运行中') if row.get('native_status') == 'Running' else t_task('就绪') if row.get('enabled') else t_task('已禁用')} · LastTaskResult {raw_status or '—'}",
+            'policy': row.get('multiple_instances_policy') or t_task('不可用'),
             'account': account, 'claimed': row.get('claimed'), 'enabled': row.get('enabled'),
             'actions': _actions(row, task_center.task_capabilities(access, row['task_id']) if row.get('task_id') else set()),
         })
@@ -47,13 +48,13 @@ def load_windows(access, keyword='', status='', page=1, page_size=20):
 
 def _actions(row, capabilities=None):
     if not row.get('task_id'):
-        return [{'content': '先认领', 'type': 'default', 'disabled': True, 'custom': 'unclaimed'}]
+        return [{'content': t_task('先认领'), 'type': 'default', 'disabled': True, 'custom': 'unclaimed'}]
     operation = 'pause' if row.get('enabled') else 'resume'
     capabilities = capabilities if capabilities is not None else {'run', operation, 'delete'}
     return [{'content': label, 'type': 'link', 'custom': f'{action}:{row["task_id"]}', **extra}
             for label, action, extra in [
-                ('启动', 'run', {}), ('暂停' if operation == 'pause' else '启用', operation, {}),
-                ('删除', 'delete', {'danger': True}), ('核实定义', 'resolve_definition', {})]
+                (t_task('启动'), 'run', {}), (t_task('暂停') if operation == 'pause' else t_task('启用'), operation, {}),
+                (t_task('删除'), 'delete', {'danger': True}), (t_task('核实定义'), 'resolve_definition', {})]
             if action in capabilities or (action == 'resolve_definition' and 'resolve' in capabilities)]
 
 
@@ -69,16 +70,16 @@ def refresh_windows(_init, _refresh, keyword, status, page, page_size):
         rows, total, result = load_windows(_access(), keyword, status, page or 1, page_size or 20)
         summary = html.Div([
             html.Div([html.Span(str(total), className='tc-summary-value'),
-                      html.Span('原生任务快照', className='tc-summary-label')], className='tc-summary-item'),
+                      html.Span(t_task('原生任务快照'), className='tc-summary-label')], className='tc-summary-item'),
             html.Div([html.Span(str(sum(row['enabled'] for row in rows)), className='tc-summary-value'),
-                      html.Span('就绪（本页）', className='tc-summary-label')], className='tc-summary-item'),
+                      html.Span(t_task('就绪（本页）'), className='tc-summary-label')], className='tc-summary-item'),
         ], className='tc-summary-strip')
         notice = None if result.get('online') else fac.AntdAlert(
-            message=f"Windows 任务服务不可用：{result.get('error') or '请稍后刷新'}",
+            message=f"{t_task('Windows 任务服务不可用：')}{result.get('error') or t_task('请稍后刷新')}",
             type='warning', showIcon=True)
         return rows, total, summary, notice
     except Exception as exc:
-        return [], 0, None, fac.AntdAlert(message=str(exc), type='error', showIcon=True)
+        return [], 0, None, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True)
 
 
 @app.callback(
@@ -92,10 +93,10 @@ def prepare_windows_action(_click, custom, row):
         return dash.no_update, dash.no_update, dash.no_update
     operation, task_id = custom.split(':', 1)
     action = {'operation': operation, 'task_id': task_id, 'request_key': uuid4().hex}
-    return True, html.Div([html.P(f"任务：{(row or {}).get('name', task_id)}"),
-                           html.P(f'操作：{operation}'),
-                           html.P('平台请求只代表服务已受理，不代表原生任务已完成。'),
-                           fac.AntdInput(id='tc-windows-resolve-reason', value='', mode='text-area', placeholder='核实依据',
+    return True, html.Div([html.P(f"{t_task('任务')}：{(row or {}).get('name', task_id)}"),
+                           html.P(f"{t_task('操作：')}{task_operation_label(operation)}"),
+                           html.P(t_task('平台请求只代表服务已受理，不代表原生任务已完成。')),
+                           fac.AntdInput(id='tc-windows-resolve-reason', value='', mode='text-area', placeholder=t_task('核实依据'),
                                style={} if operation == 'resolve_definition' else {'display': 'none'})]), action
 
 
@@ -118,10 +119,10 @@ def execute_windows_action(_ok, action, reason=None):
         else:
             result = task_center.operate_task(_access(), action['task_id'], action['operation'],
                                               request_key=action['request_key'])
-        return False, fac.AntdAlert(message=result.get('message') or '操作已受理',
+        return False, fac.AntdAlert(message=task_message(result.get('message') or '操作已受理'),
                         type='warning' if result.get('status') == 'unknown' else 'success', showIcon=True), int(datetime.now().timestamp() * 1000)
     except Exception as exc:
-        return False, fac.AntdAlert(message=str(exc), type='error', showIcon=True), dash.no_update
+        return False, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True), dash.no_update
 
 
 @app.callback(
@@ -135,8 +136,8 @@ def open_windows_claim(_click):
     return True, html.Div([
         fac.AntdSelect(id='tc-windows-claim-job', options=[
             {'label': row['name'], 'value': row['job_id']} for row in rows if not row['claimed']],
-            placeholder='选择原生任务', style={'width': '100%'}),
-        fac.AntdSelect(id='tc-windows-claim-team', options=teams, placeholder='归属团队',
+            placeholder=t_task('选择原生任务'), style={'width': '100%'}),
+        fac.AntdSelect(id='tc-windows-claim-team', options=teams, placeholder=t_task('归属团队'),
                        style={'width': '100%'}),
     ], className='tc-form-grid')
 
@@ -151,9 +152,9 @@ def open_windows_claim(_click):
 def claim_windows(_ok, job_id, group_name):
     try:
         task_center.claim_task(_access(), job_id, group_name, engine='windows')
-        return False, fac.AntdAlert(message='Windows 任务已认领。', type='success', showIcon=True), int(datetime.now().timestamp() * 1000)
+        return False, fac.AntdAlert(message=t_task('Windows 任务已认领。'), type='success', showIcon=True), int(datetime.now().timestamp() * 1000)
     except Exception as exc:
-        return True, fac.AntdAlert(message=str(exc), type='error', showIcon=True), dash.no_update
+        return True, fac.AntdAlert(message=task_message(str(exc)), type='error', showIcon=True), dash.no_update
 
 
 @app.callback(Output('tc-windows-download', 'data'), Input('tc-windows-export', 'nClicks'),

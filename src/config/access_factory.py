@@ -9,7 +9,7 @@ from dash_view.application.dashboard_ import monitor
 from dash_view.application.person_ import personal_info
 from dash_view.application.message_ import announcement
 from dash_view.application.task_ import overview, task_mgmt, windows_scheduler as task_windows_scheduler, task_log
-from dash_view.application.setting_ import notify_api, listen_api
+from dash_view.application.setting_ import notify_api, listen_api, agent_provider
 
 ##################### 【新增】内置应用 #####################
 ################## 【开始】此处导入您的应用 ###################
@@ -63,6 +63,7 @@ class AccessFactory:
         task_log,         # 任务日志页面
         notify_api,       # 通知接口页面
         listen_api,       # 监听接口页面
+        agent_provider,  # Agent 接入配置页面
         *apps,
     ]
 
@@ -107,7 +108,13 @@ class AccessFactory:
         '任务日志-页面',
         '通知接口-页面',
         '监听接口-页面',
+        'Agent配置-页面',
     )
+
+    @classmethod
+    def get_admin_access_meta(cls):
+        """Return built-in and registered page permissions for system administrators."""
+        return tuple(dict.fromkeys((*cls.admin_access_meta, *cls.get_dict_access_meta2menu_item().keys())))
 
     # 内置可以分配的权限 
     assignable_access_meta = ('rpa_scheduler', '任务管理-页面', '任务日志-页面', 'Windows任務管理-页面')

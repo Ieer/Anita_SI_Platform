@@ -21,7 +21,10 @@ def startup_config_path():
 
 
 def _validate_config(config):
-    if not isinstance(config, dict) or set(config) != {'schema', 'revision', 'scheduler_mode'}:
+    if not isinstance(config, dict) or set(config) not in (
+        {'schema', 'revision', 'scheduler_mode'},
+        {'schema', 'revision', 'scheduler_mode', 'keep_awake'},
+    ):
         raise StartupConfigError('Startup configuration has an invalid shape')
     if config['schema'] != STARTUP_CONFIG_SCHEMA:
         raise StartupConfigError('Unsupported startup configuration schema')
@@ -29,6 +32,10 @@ def _validate_config(config):
         raise StartupConfigError('Startup configuration revision must be a non-negative integer')
     if config['scheduler_mode'] not in STARTUP_MODES:
         raise StartupConfigError('Unsupported scheduler startup mode')
+    if 'keep_awake' not in config:
+        config = {**config, 'keep_awake': False}
+    if not isinstance(config['keep_awake'], bool):
+        raise StartupConfigError('Startup keep-awake setting must be a boolean')
     return config
 
 
@@ -41,13 +48,14 @@ def load_startup_config(path=None):
             'schema': STARTUP_CONFIG_SCHEMA,
             'revision': 0,
             'scheduler_mode': DEFAULT_STARTUP_MODE,
+            'keep_awake': False,
         }
     except (OSError, json.JSONDecodeError) as error:
         raise StartupConfigError('Unable to read startup configuration') from error
     return _validate_config(config)
 
 
-def save_scheduler_mode(mode, expected_revision, path=None):
+def save_scheduler_mode(mode, expected_revision, path=None, keep_awake=None):
     if mode not in STARTUP_MODES:
         raise StartupConfigError('Unsupported scheduler startup mode')
     if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0:
@@ -65,10 +73,15 @@ def save_scheduler_mode(mode, expected_revision, path=None):
         current = load_startup_config(config_path)
         if current['revision'] != expected_revision:
             raise StartupConfigError('Startup configuration changed; reload before saving')
+        if keep_awake is None:
+            keep_awake = current['keep_awake']
+        if not isinstance(keep_awake, bool):
+            raise StartupConfigError('Startup keep-awake setting must be a boolean')
         updated = {
             'schema': STARTUP_CONFIG_SCHEMA,
             'revision': current['revision'] + 1,
             'scheduler_mode': mode,
+            'keep_awake': keep_awake,
         }
         config_path.parent.mkdir(parents=True, exist_ok=True)
         file_descriptor, temporary_name = tempfile.mkstemp(
